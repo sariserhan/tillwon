@@ -114,8 +114,11 @@ campaigns: defineTable({
   dailySpins: v.number(),                   // default 10
   resetTimezone: v.string(),                // IANA, default "UTC"
   resetHour: v.number(),                    // 0-23, default 0
+  // prize tier — derived from prize value, decides the reel count (3–8)
+  reelColumns: v.number(),
   // winner engine
-  projectedVolume: v.number(),              // total eligible spins expected across the flight
+  projectedVolume: v.number(),              // == oddsDenominator; the sealed target's range
+  oddsDenominator: v.number(),              // the PUBLISHED odds; defaults to 10^reelColumns
   shardCount: v.number(),                   // default 16, see §4
   commitmentHash: v.string(),               // SHA-256(target || nonce), publishable
   // eligibility
@@ -521,6 +524,37 @@ nothing about the real threat, which is a privileged insider changing the target
 traffic. The commitment makes that tampering publicly detectable. The brief files this under §9
 "optional future feature"; it costs one hash to do at launch and is the strongest single control in
 the system.
+
+### Prize tiers
+
+Prize value decides the tier, and the tier decides the reel count. Table and
+resolution live in `app/lib/tiers.ts`, asserted by `npm run check:spin`.
+
+| Tier | Value | Reels | Default odds | EV per entry |
+|---|---|---|---|---|
+| 1 | ≤ $100 | 3 | 1 in 1,000 | $0.100 |
+| 2 | $100–500 | 4 | 1 in 10,000 | $0.050 |
+| 3 | $500–1,000 | 5 | 1 in 100,000 | $0.010 |
+| 4 | $1,000–5,000 | 6 | 1 in 1,000,000 | $0.005 |
+| 5 | $5,000–10,000 | 7 | 1 in 10,000,000 | $0.001 |
+| 6 | $10,000+ | 8 | 1 in 100,000,000 | $0.0005 |
+
+`projectedVolume` **must equal** `oddsDenominator`, because the sealed target is
+drawn from that range and the published figure has to describe the mechanism that
+actually runs. Publishing one number and sealing against another would be a false
+odds disclosure.
+
+> **Economic hazard, recorded rather than silently shipped.** The odds ladder
+> spans five orders of magnitude; prize value spans about two. Expected value per
+> entry therefore *falls* about 200× from tier 1 to tier 6, and tier 6 at 10,000
+> entries a day needs roughly 27 years to produce a winner — the most exciting
+> prizes are the ones that never pay. `oddsDenominator` is a campaign field
+> precisely so this can be decoupled: deriving it from a target campaign length
+> (expected daily entries × intended days) keeps duration predictable and EV flat
+> across tiers, and requires no engine or UI change. The default is what was
+> specified; the override is the escape hatch.
+
+Bounds are exclusive-low / inclusive-high: $100 is tier 1, $100.01 is tier 2.
 
 ### Losing symbols
 

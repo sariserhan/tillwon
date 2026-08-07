@@ -40,13 +40,15 @@ export const SYMBOL_LABELS: Record<SymbolKey, string> = {
   MIC: "microphone",
 };
 
-/** The jackpot. Three sevens, and nothing else. */
-export const JACKPOT: readonly [SymbolKey, SymbolKey, SymbolKey] = [
-  "SEVEN",
-  "SEVEN",
-  "SEVEN",
-];
-
+/**
+ * The jackpot: a seven on every column, however many the tier has. Reel count
+ * varies by prize tier, so this is deliberately length-agnostic — an empty reel
+ * set is never a win.
+ */
 export function isJackpot(symbols: readonly SymbolKey[]): boolean {
-  return symbols.length === 3 && symbols.every((s) => s === "SEVEN");
+  return symbols.length > 0 && symbols.every((s) => s === "SEVEN");
+}
+
+export function jackpotFor(columns: number): SymbolKey[] {
+  return Array.from({ length: columns }, () => "SEVEN" as SymbolKey);
 }

@@ -100,10 +100,49 @@ drop). **Ticket, lamp and microphone were derived from this surface's own world*
 a raffle stub, the on-air filament bulb, the announcer's microphone — rather than
 from fruit-machine iconography, which the product may not resemble.
 
+## Prize tiers and reel count
+
+The prize's value decides the tier, and the tier decides how many reels the
+apparatus has — a bigger prize is visibly a longer machine. Table in
+`app/lib/tiers.ts`; bounds are exclusive-low / inclusive-high, so "up to $100"
+includes exactly $100.
+
+| Tier | Prize value | Reels | Default odds |
+|---|---|---|---|
+| 1 | up to $100 | 3 | 1 in 1,000 |
+| 2 | $100–500 | 4 | 1 in 10,000 |
+| 3 | $500–1,000 | 5 | 1 in 100,000 |
+| 4 | $1,000–5,000 | 6 | 1 in 1,000,000 |
+| 5 | $5,000–10,000 | 7 | 1 in 10,000,000 |
+| 6 | $10,000+ | 8 | 1 in 100,000,000 |
+
+The odds are the honest reading of the picture: ten symbols per reel, a seven
+required on every column, so 10^columns. The visual and the published figure
+coincide, which is what makes the apparatus a truthful diagram of the odds rather
+than a decoration over unrelated numbers.
+
+**⚠️ Recorded economic hazard.** The ladder spans five orders of magnitude while
+prize value spans about two, so expected value per entry *falls* as tiers rise —
+tier 6 is roughly 200× worse per entry than tier 1, and at 10,000 entries a day it
+needs ~27 years to produce a winner. The headline tiers are the ones that never
+pay. `campaign.oddsDenominator` therefore overrides the default, and changing it
+touches no engine and no reel code. A sounder rule derives the denominator from a
+target campaign length rather than from column count.
+
 **The symbols are decorative and do not set the odds.** The winner is decided by
-the sealed entry counter; symbols are rendered after the outcome exists. 10³ =
-1000 combinations is **not** a 1-in-1000 chance of winning, and the Official Rules
-state the real figure.
+the sealed entry counter; symbols are rendered after the outcome exists. The
+combinatorial figure is published as the odds because it is the value the sealed
+target is set to — not because the reels roll it.
+
+Odds appear in three places, all reading from one value: stamped on the housing
+as a spec plate, in the band beside the prize, and in the compliance caption with
+the disclosure that actual odds depend on total entries received — which is the
+truthful qualifier for a sealed-entry draw.
+
+**Layout at eight reels** is the constraint that shapes the deck: gaps tighten
+from 6px to 3px above six columns, the housing width is `columns × 3.4rem` capped
+at 100%, and the row wraps rather than crushing the outcome column. Verified at
+375px: tiles 32×39px, no overflow, primary action above the fold.
 
 Drawing rule, enforced by `npm run check:spin`: reels are drawn uniformly and only
 the jackpot triple is withheld. Individual sevens land at their honest frequency

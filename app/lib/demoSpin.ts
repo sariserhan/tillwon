@@ -19,30 +19,28 @@ const pick = <T,>(pool: readonly T[]): T =>
   pool[Math.floor(Math.random() * pool.length)];
 
 export type DemoResult = {
-  symbols: [SymbolKey, SymbolKey, SymbolKey];
+  symbols: SymbolKey[];
   isPotentialWinner: false;
 };
 
 /**
- * Mirrors the real engine's rule: a non-winning spin may never read 7-7-7, but
- * individual sevens land at their honest frequency.
+ * Mirrors the real engine's rule: a non-winning spin may never show a seven on
+ * every column, but individual sevens land at their honest frequency.
  *
  * Excluding SEVEN outright — which this stub did originally — makes any visible
  * seven a tell that the spin has won, and a machine whose jackpot symbol never
  * appears looks either broken or rigged. Over-generating near misses would be
- * the opposite failure, banned by the product's own copy rules, so the reels are
- * drawn uniformly and only the jackpot triple is withheld.
+ * the opposite failure, banned by the product's own copy rules, so every reel is
+ * drawn uniformly and only the all-sevens result is withheld.
+ *
+ * @param columns reels for this prize tier, 3 through 8
  */
-export function demoSpin(): DemoResult {
-  const symbols: [SymbolKey, SymbolKey, SymbolKey] = [
-    pick(SYMBOL_KEYS),
-    pick(SYMBOL_KEYS),
-    pick(SYMBOL_KEYS),
-  ];
+export function demoSpin(columns: number): DemoResult {
+  const symbols = Array.from({ length: columns }, () => pick(SYMBOL_KEYS));
 
-  // Re-roll the third reel only, from the non-seven pool, so this terminates in
+  // Re-roll the last reel only, from the non-seven pool, so this terminates in
   // one step rather than looping on a fresh jackpot.
-  if (isJackpot(symbols)) symbols[2] = pick(NON_SEVEN);
+  if (isJackpot(symbols)) symbols[columns - 1] = pick(NON_SEVEN);
 
   return { symbols, isPotentialWinner: false };
 }

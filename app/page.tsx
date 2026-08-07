@@ -4,6 +4,12 @@ import {
   SealedCommitment,
   TallyLamp,
 } from "./components/StudioFurniture";
+import {
+  defaultOddsDenominator,
+  formatMoney,
+  formatOdds,
+  resolveTier,
+} from "@/app/lib/tiers.ts";
 
 /**
  * The campaign surface, first viewport.
@@ -18,6 +24,15 @@ import {
 const CAMPAIGN = {
   name: "SpinDrop",
   prizeTitle: "$100 gift card",
+  /** Integer cents. Decides the tier, and therefore the reel count. */
+  prizeValueCents: 10_000,
+  /**
+   * Published odds denominator. Defaults from the tier (10^columns) but is a
+   * campaign field, because the tier ladder's expected value per entry falls as
+   * tiers rise — see app/lib/tiers.ts. Whatever is set here is what the engine's
+   * sealed target must use and what the Official Rules must state.
+   */
+  oddsDenominator: undefined as number | undefined,
   sponsorName: "SpinDrop",
   status: "live" as const,
   noPurchaseStatement:
@@ -25,6 +40,11 @@ const CAMPAIGN = {
 };
 
 export default function Home() {
+  const tier = resolveTier(CAMPAIGN.prizeValueCents);
+  const oddsDenominator =
+    CAMPAIGN.oddsDenominator ?? defaultOddsDenominator(tier);
+  const valueLabel = formatMoney(CAMPAIGN.prizeValueCents);
+
   return (
     <main>
       {/* The first screen is exactly one viewport: header, prize, graphics band,
@@ -69,7 +89,11 @@ export default function Home() {
         {/* The prize takes the room that is left, and gives it back rather than
             pushing the graphics band out of the first viewport. */}
         <div className="flex max-h-[15rem] min-h-[12rem] flex-1 items-end justify-center px-4 pb-2 pt-3 sm:max-h-none sm:min-h-0 sm:pb-3 sm:pt-2">
-          <PrizeOnPlinth />
+          <PrizeOnPlinth
+            valueLabel={valueLabel}
+            faceLabel={CAMPAIGN.prizeTitle}
+            plaque={`${CAMPAIGN.prizeTitle} · Estimated retail value ${valueLabel}`}
+          />
         </div>
 
         {/* 3 — Lower-third graphics band. Dense by design: headline, apparatus,
@@ -86,10 +110,19 @@ export default function Home() {
                 Spin for a chance to win the {CAMPAIGN.prizeTitle}. Free to
                 enter, and the prize stays live until someone wins it.
               </p>
+              <p className="mt-2 text-sm text-caption">
+                <span className="text-enamel">
+                  Odds {formatOdds(oddsDenominator)}
+                </span>{" "}
+                · {tier.label} prize · {tier.columns} reels
+              </p>
             </div>
 
             <div className="min-w-0 flex-1">
-              <SpinDeck />
+              <SpinDeck
+                columns={tier.columns}
+                oddsDenominator={oddsDenominator}
+              />
             </div>
           </div>
 
@@ -118,7 +151,9 @@ export default function Home() {
             >
               Official Rules
             </a>
-            .
+            . Stated odds of {formatOdds(oddsDenominator)} are based on the
+            expected number of eligible entries; actual odds depend on the total
+            entries received.
           </p>
         </div>
       </section>

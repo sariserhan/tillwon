@@ -69,7 +69,17 @@ export function SealedCommitment() {
  * PLACEHOLDER ART. Real prize photography replaces the card face; the plinth
  * and plaque are the world's own furniture and stay.
  */
-export function PrizeOnPlinth() {
+export function PrizeOnPlinth({
+  valueLabel,
+  plaque,
+  faceLabel,
+}: {
+  valueLabel: string;
+  plaque: string;
+  /** Printed on the card's band. Never hardcode a prize type here — a $50,000
+      grand prize labelled "GIFT CARD" is placeholder art telling a lie. */
+  faceLabel: string;
+}) {
   return (
     <div className="relative flex h-full min-h-0 w-full max-w-[44rem] flex-col items-center justify-end">
       <svg
@@ -77,7 +87,7 @@ export function PrizeOnPlinth() {
         preserveAspectRatio="xMidYMax meet"
         className="h-full min-h-0 w-full"
         role="img"
-        aria-label="Prize: a one hundred dollar gift card, displayed on a plinth."
+        aria-label={`Prize: ${plaque}, displayed on a plinth.`}
       >
         <defs>
           <linearGradient id="cardFace" x1="0" y1="0" x2="0.4" y2="1">
@@ -121,7 +131,7 @@ export function PrizeOnPlinth() {
             fontWeight="700"
             letterSpacing="1.8"
           >
-            GIFT CARD
+            {faceLabel.slice(0, 16).toUpperCase()}
           </text>
           <text
             x="104"
@@ -129,11 +139,11 @@ export function PrizeOnPlinth() {
             fill="#14100c"
             fontFamily="var(--font-archivo), sans-serif"
             fontStretch="125%"
-            fontSize="68"
+            fontSize={valueLabel.length > 5 ? 48 : 68}
             fontWeight="700"
             letterSpacing="-2"
           >
-            $100
+            {valueLabel}
           </text>
           <rect x="106" y="162" width="104" height="8" rx="1" fill="#14100c" opacity="0.18" />
         </g>
@@ -146,7 +156,7 @@ export function PrizeOnPlinth() {
       {/* Engraved plaque */}
       <div className="brushed -mt-2 rounded-[2px] px-4 py-1.5 shadow-[0_2px_6px_rgb(0_0_0/0.5)]">
         <p className="text-center text-[0.62rem] uppercase tracking-[0.1em] text-ink sm:text-[0.7rem] sm:tracking-[0.12em]">
-          $100 gift card · Estimated retail value $100
+          {plaque}
         </p>
       </div>
     </div>
