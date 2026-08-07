@@ -7,6 +7,8 @@ import { BRAND } from "@/app/lib/brand.ts";
 export const metadata: Metadata = {
   title: `Your claim — ${BRAND.name}`,
   description: "The steps a prize claim follows, and what you will need.",
+  // A claim reference identifies one person's prize. Never index it.
+  robots: { index: false, follow: false },
 };
 
 /**

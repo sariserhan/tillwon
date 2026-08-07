@@ -241,6 +241,79 @@
   filter: none;
 }
 
+/* ---------------------------------------------------------------------------
+   Print.
+
+   People print legal documents, and the Official Rules are the one page here
+   somebody may genuinely need on paper. The document surfaces are already a
+   printed sheet, so printing mostly means removing the studio around them.
+
+   Link destinations are printed after the text: a URL that only exists as a
+   hover target is lost on paper, and "See Official Rules" is useless in a
+   printout that does not say where.
+   --------------------------------------------------------------------------- */
+@media print {
+  :root {
+    --color-paper: #fff;
+    --color-ink: #000;
+    --color-ink-soft: #333;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* The studio, the rails and the navigation are screen furniture. */
+  header,
+  footer,
+  nav,
+  .studio-light,
+  [role="status"] {
+    background: none !important;
+  }
+
+  header,
+  footer,
+  nav {
+    display: none !important;
+  }
+
+  article {
+    max-width: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* The draft stamp must survive printing — an unreviewed document circulating on
+     paper without it is the whole risk. */
+  [role="note"] p:first-child {
+    background: #000 !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  a[href^="/"]::after {
+    content: " (tillwon.com" attr(href) ")";
+    font-size: 0.85em;
+    color: #333;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+
+  li,
+  p {
+    break-inside: avoid;
+  }
+}
+
 /* Filament lamp. A bulb with a hot core and a short falloff — not a page glow. */
 .tally-live {
   background-image: radial-gradient(

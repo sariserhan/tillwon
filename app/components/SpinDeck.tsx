@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { FlapDrum } from "./FlapDrum";
+import { RulesGate } from "./RulesGate";
 import { SYMBOL_LABELS, type SymbolKey } from "@/app/lib/symbols.ts";
 import { demoSpin, reelQueue } from "@/app/lib/demoSpin.ts";
 import { formatOdds } from "@/app/lib/tiers.ts";
@@ -103,6 +104,8 @@ export function SpinDeck({
   const reduced = usePrefersReducedMotion();
   const resetIn = useResetCountdown();
 
+  // Not persisted on purpose — see RulesGate. The durable record is server-side.
+  const [rulesAccepted, setRulesAccepted] = useState(false);
   const [remaining, setRemaining] = useState(DAILY_SPINS);
   const [spinning, setSpinning] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -282,7 +285,9 @@ export function SpinDeck({
             notice states the recovery — when spins return — and closes the door
             on the instinct the product must never monetise.
           */}
-          {remaining === 0 && !spinning ? (
+          {!rulesAccepted ? (
+            <RulesGate onAccept={() => setRulesAccepted(true)} />
+          ) : remaining === 0 && !spinning ? (
             <DeckNotice title="Out of spins today">
               Your {DAILY_SPINS} free spins come back
               {resetIn ? ` in ${resetIn}` : " at the daily reset"}. There is no way

@@ -259,6 +259,77 @@ panel respectively.
 | `not-found` | Read | In-world "off air": dark tally lamp, empty studio |
 | `/preview/[state]` | — | **Development only, 404s in production.** Renders the winner-pending panels, which are otherwise unreachable until the backend can award a win |
 
+## Error, print, and the first-run gate
+
+**`error.tsx` / `global-error.tsx`.** An unhandled error used to fall through to
+Next's default page — the same gap the 404 had, and the same cost: a page that
+stops looking like the site reads as confirmation to someone already suspicious.
+Both say **"technical fault"** rather than "something went wrong", and both state
+that spins and claims are unaffected, because the alternative reading is that a
+person's entries or pending prize have been lost.
+
+`global-error.tsx` is styled with **inline styles and hardcoded world colours** on
+purpose: it replaces the whole document, so if the failure is in the layout the
+stylesheet may not have loaded, and a fallback that depends on the thing that broke
+is not a fallback. It restates the `.btn-primary` contrast floor (1.25rem/700)
+inline for the same reason.
+
+**Print.** `@media print` strips the studio and lets the document surfaces be what
+they already are — printed matter. Link destinations print after the text, because
+"See Official Rules" is useless on paper that does not say where, and the draft
+stamp is forced to print with `print-color-adjust: exact`: an unreviewed legal
+document circulating on paper *without* its stamp is the whole risk.
+
+**`RulesGate`.** Spec §3 requires acceptance before a spin and there was no UI at
+all. One checkbox naming three facts — age, eligible state, rules accepted.
+Separate boxes for each read as friction engineering; a single vague "I agree to
+everything" hides what is being agreed.
+
+Acceptance is **not persisted**. The durable record is a `rulesAcceptances` row
+carrying the user, campaign and exact rules version; a localStorage flag would
+manufacture the appearance of a record that does not exist, so re-asking on reload
+is the honest behaviour until the backend can store it.
+
+## Social preview and indexing
+
+`app/opengraph-image.tsx` renders a card with `ImageResponse`. A shared link
+previewed as a bare URL, which for a product whose obstacle is being mistaken for a
+scam is expensive — a link with no card looks like a link nobody vouches for.
+
+It deliberately shows **no reels**: three sevens on a social card would imply a
+jackpot that has not happened, and the icon set cannot be used in Satori without
+embedding each SVG. **Known limitation:** it uses the bundled default face, not
+Archivo, because `ImageResponse` cannot read `next/font` and fetching a font at
+build time would make the build depend on the network.
+
+Satori requires an explicit `display: flex` on any element with more than one
+child, so prose lines there are single template strings.
+
+`robots.ts` disallows `/claim/` and `/preview/`, and claim pages carry
+`robots: { index: false }` in their own metadata — a claim reference identifies one
+person's prize. `SITE_URL` comes from `NEXT_PUBLIC_SITE_URL`; **unset at deploy
+time, every canonical tag points at localhost.**
+
+## Verifying CSS and focus from a headless pane
+
+Three false negatives this session came from the checking code, not the CSS. All
+three are the same mistake in different clothes:
+
+1. **Nested rules.** `:focus-visible` lives inside `@layer base`, and a flat walk
+   of `sheet.cssRules` never sees it. Recurse into `@layer`, `@media` and
+   `@supports`.
+2. **Serialized longhand.** `animation: none` serializes as
+   `animation: auto ease 0s 1 normal none running none`; matching the source text
+   fails.
+3. **Truncating before matching.** Slicing rule text to 90 characters and *then*
+   testing for a property cut the property off.
+
+**Programmatic `.focus()` does not trigger `:focus-visible`** on a button, so it
+cannot verify the focus ring. A real key press can: after one, the ring computes to
+`3px solid rgb(240,168,72)` at 3px offset. Verified that way, along with 28
+focusable elements in DOM order, no positive `tabindex`, and the skip link first
+with its target after the header.
+
 ## The winner-pending states
 
 Two faces of the same campaign status, in `app/components/WinnerPending.tsx`.

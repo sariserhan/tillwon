@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Archivo, Public_Sans } from "next/font/google";
 import "./globals.css";
 import { BRAND } from "@/app/lib/brand.ts";
+import { SITE_DESCRIPTION, SITE_URL } from "@/app/lib/site.ts";
 
 // Archivo carries a width axis; the broadcast titling voice lives at its
 // expanded end. Public Sans is the civic register — a public draw, in the
@@ -45,9 +46,32 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the
 -->`;
 
 export const metadata: Metadata = {
-  title: `${BRAND.name} — 10 free spins every day`,
-  description:
-    "Spin for a chance to win the current sponsored prize. No purchase necessary.",
+  // metadataBase resolves canonical and social URLs. If NEXT_PUBLIC_SITE_URL is
+  // unset at deploy time, every canonical tag points at localhost.
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${BRAND.name} — 10 free spins every day`,
+    template: `%s — ${BRAND.name}`,
+  },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  applicationName: BRAND.name,
+  openGraph: {
+    type: "website",
+    siteName: BRAND.name,
+    title: `${BRAND.name} — 10 free spins every day`,
+    description: SITE_DESCRIPTION,
+    url: "/",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${BRAND.name} — 10 free spins every day`,
+    description: SITE_DESCRIPTION,
+  },
+  // A free prize draw is exactly the kind of page a scraper misrepresents; being
+  // explicit costs nothing.
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
