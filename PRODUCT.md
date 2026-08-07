@@ -151,15 +151,26 @@ worse. One engine, chosen deliberately.
 
 ### Open decisions — must be resolved, must not be invented
 
-- **Eligible jurisdictions.** None chosen. The brief correctly says to restrict to explicitly
-  supported jurisdictions rather than claiming worldwide eligibility. Note that in the US, prizes
-  above roughly $5,000 trigger advance registration and surety bonding in New York and Florida,
-  filed about 30 days before the promotion opens. That is a constraint on the launch *date*, not a
-  hardening task to defer.
+- ~~**Eligible jurisdictions.**~~ **Recommended 2026-08-06, pending counsel:** the 50 US states and
+  DC, aged 18+, **excluding Tennessee, Alabama, Nebraska, Mississippi**, all US territories, and
+  overseas military installations — 46 states plus DC. Encoded with per-exclusion reasoning in
+  `app/lib/jurisdictions.ts`.
+  - **Tennessee is excluded because of the publicity decision, not for its own sake.** Its consumer
+    protection act makes conditioning a prize on consent to promotional use a deceptive practice, and
+    it is the only state that does. Making publicity optional reopens it.
+  - Alabama and Nebraska require 19, Mississippi 21. They are excluded only because `minimumAge` is
+    one number per campaign; a per-region age floor would reopen all three.
+  - Rhode Island stays eligible: its registration duty applies to retail-linked promotions, and this
+    product is online-only. A sponsor tying a campaign to physical stores brings it back at $500.
+  - New York and Florida require registration **and a surety bond for the full prize value** when
+    prizes exceed $5,000 — NY at 30 days' notice, FL at 7. That threshold is exactly tier 4's
+    ceiling, so tiers 1–4 are registration-free and tiers 5–6 are not.
 - ~~**Whether every campaign carries a hard maximum end date.**~~ **Resolved 2026-08-06: no end
-  date.** Campaigns run until a valid winner is confirmed. This is unproblematic below the ~$5,000
-  prize threshold that triggers New York and Florida registration and bonding, so it is correct for
-  the seed campaign, and becomes a live constraint the first time a prize exceeds that value.
+  date, below the registration threshold.** Campaigns run until a valid winner is confirmed. Now
+  confirmed against the actual rule: New York and Florida registration and bonding apply only above
+  $5,000 in prize value, so open-ended is genuinely fine for tiers 1–4. **Tiers 5–6 need a hard end
+  date** — those filings assume a stated period, and an open-ended run keeps a surety bond for the
+  full prize value outstanding indefinitely.
 - **Whether the reels ever produce anything smaller than the jackpot.** The brief specifies binary
   win-or-nothing, and that stands as the confirmed requirement. Concern on record: at the stated
   odds, a user can play every day for a year and experience nothing but ten losses a day, which is

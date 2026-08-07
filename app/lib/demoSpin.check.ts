@@ -16,6 +16,14 @@ import {
   formatOdds,
   resolveTier,
 } from "./tiers.ts";
+import {
+  ALL_US_JURISDICTIONS,
+  ELIGIBLE_JURISDICTIONS,
+  EXCLUSIONS,
+  REGISTRATION_THRESHOLD_CENTS,
+  isEligibleJurisdiction,
+  registrationDuty,
+} from "./jurisdictions.ts";
 
 /* ---- tier table ---------------------------------------------------------- */
 
@@ -44,6 +52,52 @@ assert.equal(resolveTier(500_000).tier, 4, "$5,000 belongs to tier 4");
 assert.equal(resolveTier(1_000_000).tier, 5, "$10,000 belongs to tier 5");
 assert.equal(resolveTier(9_999_999).tier, 6, "anything above $10,000 is tier 6");
 assert.equal(resolveTier(1).tier, 1, "a one-cent prize is tier 1");
+
+/* ---- jurisdictions ------------------------------------------------------- */
+
+assert.equal(ALL_US_JURISDICTIONS.length, 51, "50 states plus DC");
+assert.equal(
+  new Set(ALL_US_JURISDICTIONS).size,
+  51,
+  "jurisdiction codes must be unique",
+);
+assert.equal(ELIGIBLE_JURISDICTIONS.length, 47, "46 states plus DC are eligible");
+
+// Nothing may be both eligible and excluded, and every exclusion must name a real
+// jurisdiction — a typo'd code would silently exclude nobody.
+for (const e of EXCLUSIONS) {
+  assert.ok(
+    (ALL_US_JURISDICTIONS as readonly string[]).includes(e.code),
+    `exclusion ${e.code} is not a real jurisdiction`,
+  );
+  assert.equal(isEligibleJurisdiction(e.code), false, `${e.code} must be excluded`);
+  assert.ok(e.reason.length > 40, `exclusion ${e.code} needs a real reason`);
+}
+assert.ok(isEligibleJurisdiction("ny"), "lookups are case-insensitive");
+assert.ok(isEligibleJurisdiction("RI"), "Rhode Island stays eligible: online-only");
+assert.equal(isEligibleJurisdiction("PR"), false, "territories are out of scope");
+
+// The registration cliff must sit exactly on tier 4's ceiling.
+const tier4Ceiling = TIERS[3].maxValue!;
+assert.equal(
+  tier4Ceiling,
+  REGISTRATION_THRESHOLD_CENTS,
+  "the NY/FL $5,000 threshold must coincide with tier 4's ceiling",
+);
+assert.equal(registrationDuty(tier4Ceiling).required, false, "$5,000 exactly: no filing");
+assert.equal(registrationDuty(tier4Ceiling + 1).required, true, "$5,000.01: filing due");
+assert.deepEqual(registrationDuty(1_000_000).states, ["NY", "FL"]);
+assert.equal(registrationDuty(1_000_000).leadDays, 30);
+
+for (const t of TIERS) {
+  const probe = t.maxValue ?? t.minValue + 1;
+  const duty = registrationDuty(probe);
+  assert.equal(
+    duty.required,
+    t.tier >= 5,
+    `tier ${t.tier} registration duty should be ${t.tier >= 5}`,
+  );
+}
 
 /* ---- drawing rule, every tier -------------------------------------------- */
 

@@ -936,13 +936,11 @@ Carried from PRODUCT.md, with what each one blocks:
 
 **Still open:**
 
-1. **Eligible jurisdictions** — blocks checkpoint 3 and all Official Rules text. The last remaining
-   pre-code blocker. Two things now depend on it together: NY and FL advance registration and bonding
-   for prizes over ~$5,000 constrain a future launch date by roughly 30 days, and the mandatory
-   publicity release (§7) may be unenforceable in at least one US state, so the jurisdiction list and
-   the publicity requirement must be reviewed as one question.
-2. **Actual odds** (`projectedVolume`) — blocks activating a real campaign, not building one. Needs a
-   traffic estimate that does not exist yet.
+1. **Counsel sign-off on the jurisdiction set in §17.** The research is done and encoded; a lawyer
+   confirming or overruling it is what remains. Nothing blocks *building* checkpoint 3 — the data
+   exists — only launching on it.
+2. **Actual odds** (`oddsDenominator`) — blocks activating a real campaign, not building one. The
+   tier default is the specified 10^columns; see the economic hazard in §4.
 3. **Whether the reels ever pay smaller than the jackpot** — spec builds binary per the brief. If
    tiered rewards are ever wanted, `spins.symbols` and a `prizeTier` field absorb it without
    touching the winner engine, but the Official Rules would need republishing.
@@ -957,4 +955,60 @@ Carried from PRODUCT.md, with what each one blocks:
    name and photograph (§7). Two derived requirements: the publicity release must be in the Official
    Rules before the first spin, and no SSN or ITIN is ever stored in a database field.
 
-Item 1 must be answered before code. 2 before launch. 3 is answerable later at a known cost.
+All three are now launch gates rather than code gates. **Checkpoint 1 is unblocked.**
+
+---
+
+## 17. Jurisdictions
+
+**Recommended, pending counsel.** Desk research, not legal advice. Encoded with per-exclusion
+reasoning in `app/lib/jurisdictions.ts` and asserted by `npm run check:spin`.
+
+**Open to legal residents of the 50 US states and DC, aged 18 or older, excluding Tennessee,
+Alabama, Nebraska, Mississippi, all US territories, and overseas military installations.** That is
+46 states plus DC.
+
+| Excluded | Why | What would reopen it |
+|---|---|---|
+| **TN** | Its consumer protection act makes conditioning receipt of a prize on consent to promotional use a deceptive practice. The mandatory publicity release (§7) is therefore unenforceable there. **The only state with this restriction.** | Making publicity optional |
+| **AL**, **NE** | Minimum age 19 | A per-region age floor instead of one `minimumAge` |
+| **MS** | Minimum age 21 | Same |
+| Territories, overseas bases | Separate regimes; Puerto Rico has its own promotion rules | Reviewing each on its own |
+
+Tennessee is excluded **as a consequence of the anonymity decision, not on its own merits.** That is
+the trade being made: one state, roughly 2% of the US population, in exchange for publishing every
+winner's name and photograph. Worth restating whenever the publicity requirement is revisited.
+
+Rhode Island **stays eligible.** Its registration duty attaches to retail-linked promotions above
+$500 in prizes, and this product is online-only with no in-store component. A sponsor who ties a
+campaign to physical stores brings that duty back at a threshold ten times lower than NY or FL.
+
+### Registration and bonding
+
+New York and Florida require registration **and a surety bond for the total prize value** when prizes
+**exceed $5,000**. NY: at least 30 days before the start, $100 fee. FL: at least 7 days before. Both
+require a winners list afterward.
+
+**$5,000 is exactly tier 4's ceiling**, so the tier ladder has a compliance cliff between tiers 4 and
+5. This alignment is worth preserving deliberately when the tier table is edited; the self-check
+asserts it.
+
+| Tiers | Prize value | Registration | End date |
+|---|---|---|---|
+| 1–4 | up to $5,000 | none | open-ended is fine |
+| 5–6 | above $5,000 | NY + FL, bond for full value, 30 days' lead | **hard end date needed** |
+
+The end-date column is the resolution of §2's earlier tension. Open-ended is genuinely safe below the
+threshold; above it, those filings assume a stated period and an open-ended run leaves a bond for the
+full prize value outstanding indefinitely.
+
+### Sources
+
+- [Klein Moynihan Turco — sweepstakes registration and bonding](https://kleinmoynihan.com/sweepstakes-registration-and-bonding-requirements-2/)
+- [Fasthoff Law Firm — registration and bonding by state](https://fasthofflawfirm.com/blog/sweepstakes-state-registration-bonding)
+- [BeeLiked — state prize bonding, legal exclusions, participant eligibility](https://www.beeliked.com/beelegal/navigating-us-sweepstakes-state-prize-bonding-legal-exclusions-and-participant-eligibility)
+- [Brandmovers — 2026 promotions compliance guide](https://blog.brandmovers.com/promotions-compliance-in-2026-sweepstakes-instant-win-and-ugc-rules-marketers-must-know)
+- [Tennessee Code § 47-18-124 (Justia)](https://law.justia.com/codes/tennessee/title-47/chapter-18/part-1/section-47-18-124/)
+- [American Sweepstakes — Tennessee](https://american-sweeps.com/sweepstakes-contest-laws/tennessee/)
+- [SweepPea — Tennessee rules](https://www.sweeppeasweeps.com/sweepstakes-and-contest-rules-tennessee/)
+- [Woobox — state-by-state overview](https://woobox.com/articles/sweepstakes-legal-requirements-by-state)
