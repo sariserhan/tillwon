@@ -80,12 +80,20 @@ export function PrizeOnPlinth({
       grand prize labelled "GIFT CARD" is placeholder art telling a lie. */
   faceLabel: string;
 }) {
+  // One sizing mechanism per breakpoint, because mixing them fought itself:
+  // `h-full` inside a `max-h` container rendered a 440px-tall SVG inside a 272px
+  // cap and overflowed.
+  //
+  // Below lg the page flows, so width drives and height follows the 8:5 aspect.
+  // At lg the viewport is locked, so height drives and width follows — the only
+  // way the prize fills the room the overlay freed rather than being letterboxed
+  // inside a wider box.
   return (
-    <div className="relative flex h-full min-h-0 w-full max-w-[44rem] flex-col items-center justify-end">
+    <div className="relative flex w-full max-w-[22rem] flex-col items-center justify-end lg:h-full lg:min-h-0 lg:max-w-[40rem]">
       <svg
         viewBox="0 0 400 250"
         preserveAspectRatio="xMidYMax meet"
-        className="h-full min-h-0 w-full"
+        className="h-auto w-full lg:h-full lg:min-h-0 lg:w-auto lg:max-w-full"
         role="img"
         aria-label={`Prize: ${plaque}, displayed on a plinth.`}
       >

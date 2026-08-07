@@ -7,6 +7,7 @@ import { PrizeAndSponsor } from "@/app/components/PrizeAndSponsor";
 import { HowItWorks } from "@/app/components/HowItWorks";
 import { PrizeOnPlinth, TallyLamp } from "@/app/components/StudioFurniture";
 import { formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 import {
   CURRENT_CAMPAIGN,
   CURRENT_ODDS,
@@ -35,7 +36,7 @@ export async function generateMetadata({
   const { slug } = await params;
   if (!CAMPAIGNS.some((c) => c.slug === slug)) return {};
   return {
-    title: `${CURRENT_CAMPAIGN.prizeTitle} draw — SpinDrop`,
+    title: `${CURRENT_CAMPAIGN.prizeTitle} draw — ${BRAND.name}`,
     description: `Ten free spins a day for a chance to win the ${CURRENT_CAMPAIGN.prizeTitle}. No purchase necessary. Odds ${formatOdds(CURRENT_ODDS)}.`,
   };
 }
@@ -92,8 +93,8 @@ export default async function CampaignPage({
               <div className="w-full max-w-[34rem]">
                 <PrizeOnPlinth
                   valueLabel={valueLabel}
-                  faceLabel={CURRENT_CAMPAIGN.prizeTitle}
-                  plaque={`${CURRENT_CAMPAIGN.prizeTitle} · Estimated retail value ${valueLabel}`}
+                  faceLabel={CURRENT_CAMPAIGN.prizeFaceLabel}
+                  plaque={`Estimated retail value ${valueLabel}`}
                 />
               </div>
             </div>

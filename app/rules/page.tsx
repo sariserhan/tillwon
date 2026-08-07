@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DocumentShell } from "@/app/components/DocumentShell";
 import { TIERS, formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 import {
   ELIGIBLE_JURISDICTIONS,
   EXCLUSIONS,
@@ -15,7 +16,7 @@ import {
 } from "@/app/lib/currentCampaign.ts";
 
 export const metadata: Metadata = {
-  title: "Official Rules — SpinDrop",
+  title: `Official Rules — ${BRAND.name}`,
   description:
     "Eligibility, how entries work, how the winner is determined, and how a prize is claimed. No purchase necessary.",
 };
@@ -35,7 +36,7 @@ export default function RulesPage() {
         <p>
           No purchase or payment of any kind is necessary to enter or win. A
           purchase will not improve your chances of winning. There is nothing to
-          buy on SpinDrop: spins cannot be purchased, sold, transferred or
+          buy on {BRAND.name}: spins cannot be purchased, sold, transferred or
           exchanged, and no subscription, payment or product purchase grants
           additional spins or better odds.
         </p>
@@ -66,7 +67,7 @@ export default function RulesPage() {
         </ul>
         <p>
           One account per person. Employees, officers and immediate family or
-          household members of SpinDrop, of the sponsor, and of any party involved
+          household members of {BRAND.name}, of the sponsor, and of any party involved
           in administering the campaign are not eligible.
         </p>
       </section>
@@ -92,7 +93,7 @@ export default function RulesPage() {
         <p>
           Before the campaign accepts its first entry, a single winning entry
           number is drawn at random and sealed. The entry that lands on that number
-          wins. Nobody — including SpinDrop staff — can change it afterwards, and
+          wins. Nobody — including {BRAND.name} staff — can change it afterwards, and
           nobody can select a preferred winner.
         </p>
         <p>

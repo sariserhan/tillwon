@@ -13,7 +13,7 @@ arguing that copy otherwise has to.
 
 Not the casino (navy, gold, neon, confetti, chips). Not the trustworthy-fintech
 dodge (white, Inter, soft-shadow cards). Not the literal reading of the name —
-"SpinDrop" is disposable working-name text read from config, so it owns nothing.
+"TillWon" is disposable working-name text read from config, so it owns nothing.
 
 ---
 
@@ -273,5 +273,5 @@ element.
 - **`app/lib/demoSpin.ts`** — delete at checkpoint 5. The outcome must come from
   the Convex mutation.
 - **Campaign constant in `app/page.tsx`** — reads from Convex at checkpoint 2.
-- **Sponsor is SpinDrop itself**, per the seed campaign. No sponsor exists; none
+- **Sponsor is TillWon itself**, per the seed campaign. No sponsor exists; none
   was invented.

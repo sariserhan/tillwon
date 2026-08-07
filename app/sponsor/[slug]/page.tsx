@@ -4,11 +4,12 @@ import { notFound } from "next/navigation";
 import { DocumentShell } from "@/app/components/DocumentShell";
 import { CURRENT_CAMPAIGN } from "@/app/lib/currentCampaign.ts";
 import { formatMoney } from "@/app/lib/tiers.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 
 /**
  * The public sponsor profile.
  *
- * Only one sponsor exists — SpinDrop itself, funding its own first campaign — so
+ * Only one sponsor exists — TillWon itself, funding its own first campaign — so
  * this page has exactly one real entry and 404s for anything else. Generating a
  * page for an invented sponsor would be the fastest route to looking like the
  * thing this product is trying not to be.
@@ -19,7 +20,7 @@ const SPONSORS = [
     name: CURRENT_CAMPAIGN.sponsorName,
     selfFunded: true,
     blurb:
-      "SpinDrop is funding its own first campaign. The prize is real and the money is ours, which is the honest way to prove the draw works before asking a brand to back one.",
+      `${BRAND.name} is funding its own first campaign. The prize is real and the money is ours, which is the honest way to prove the draw works before asking a brand to back one.`,
   },
 ];
 
@@ -36,7 +37,7 @@ export async function generateMetadata({
   const sponsor = SPONSORS.find((s) => s.slug === slug);
   if (sponsor === undefined) return {};
   return {
-    title: `${sponsor.name} — SpinDrop sponsor`,
+    title: `${sponsor.name} — ${BRAND.name} sponsor`,
     description: sponsor.blurb,
   };
 }

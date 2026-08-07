@@ -187,8 +187,15 @@ worse. One engine, chosen deliberately.
 
 ## Brand Commitments
 
-**Name.** SpinDrop, explicitly a working name. Every surface reads it from configuration, so
-replacing it never touches layout or copy.
+**Name.** **TillWon**, confirmed by the user 2026-08-06 (the earlier working name was SpinDrop, and
+the repository directory was `tillwon` all along). It reads as "till won" — until someone wins —
+which is the product's core promise, so unlike a placeholder this name is load-bearing and worth
+keeping.
+
+Every surface, document and data string reads it from `app/lib/brand.ts`. That was an aspiration
+rather than a fact until the rename: the literal had been hardcoded in 34 places across 16 files, so
+the claim in this section was false when written. It is true now, and a component that types the
+product's name instead of importing the constant is a regression.
 
 **Voice.** Entertaining and exciting, but unmistakably a free promotional giveaway rather than a
 gambling service. Honest about odds, and honest about what a jackpot result does and does not mean.

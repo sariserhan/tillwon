@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 import {
   CURRENT_CAMPAIGN,
   CURRENT_ODDS,
@@ -80,7 +81,7 @@ export function PrizeAndSponsor() {
               {CURRENT_CAMPAIGN.sponsorName}
             </span>
             <p className="mt-3.5 max-w-[52ch] text-sm leading-relaxed text-caption">
-              This first campaign is funded by SpinDrop itself. There is no
+              This first campaign is funded by {BRAND.name} itself. There is no
               third-party sponsor yet, and none is implied anywhere on this site —
               the prize is real and the money is ours.
             </p>

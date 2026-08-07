@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DocumentShell } from "@/app/components/DocumentShell";
+import { BRAND } from "@/app/lib/brand.ts";
 
 export const metadata: Metadata = {
-  title: "Sign in — SpinDrop",
+  title: `Sign in — ${BRAND.name}`,
   description: "Sign-in arrives with the backend. Nothing here collects credentials.",
 };
 
@@ -26,7 +27,7 @@ export default function SignInPage() {
         <h2>What is coming</h2>
         <p>
           Signing in will use an email magic link, Google, or Apple. You will never
-          need a password, and SpinDrop will never ask you for payment details —
+          need a password, and {BRAND.name} will never ask you for payment details —
           there is nothing to pay for.
         </p>
       </section>

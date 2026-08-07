@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LEGAL_PAGES } from "@/app/legal/content.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 
 /**
  * The footer is where every legal surface becomes reachable. Before this existed
@@ -14,7 +15,7 @@ export function SiteFooter() {
         <div className="flex flex-col gap-6 sm:flex-row sm:justify-between">
           <div className="max-w-[34ch]">
             <p className="font-display text-base uppercase tracking-[0.02em] text-enamel">
-              SpinDrop
+              {BRAND.name}
             </p>
             <p className="mt-1.5 text-sm leading-relaxed text-caption">
               A free daily prize draw. No purchase necessary, and no purchase ever

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatOdds } from "@/app/lib/tiers.ts";
 import { MINIMUM_AGE } from "@/app/lib/jurisdictions.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 
 /**
  * The rundown — a broadcast running order, which is the form's own device for a
@@ -17,7 +18,7 @@ import { MINIMUM_AGE } from "@/app/lib/jurisdictions.ts";
 const STEPS = (odds: number) => [
   {
     title: "Sign in, and verify your email",
-    body: "Free, and there is nothing to pay for. SpinDrop never asks for a card, a bank detail or a payment method, because no payment exists anywhere in the product.",
+    body: `Free, and there is nothing to pay for. ${BRAND.name} never asks for a card, a bank detail or a payment method, because no payment exists anywhere in the product.`,
   },
   {
     title: "Collect ten free spins every day",

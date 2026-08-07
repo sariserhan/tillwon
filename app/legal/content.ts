@@ -1,3 +1,4 @@
+import { BRAND } from "@/app/lib/brand.ts";
 /**
  * Legal surface content.
  *
@@ -32,13 +33,13 @@ export const LEGAL_PAGES: readonly LegalPage[] = [
     navLabel: "Terms of Service",
     title: "Terms of Service",
     standfirst:
-      "The terms on which you may use SpinDrop. The prize draw itself is governed by the Official Rules, which take precedence over this page wherever the two touch.",
+      `The terms on which you may use ${BRAND.name}. The prize draw itself is governed by the Official Rules, which take precedence over this page wherever the two touch.`,
     draftNotice: REVIEW,
     sections: [
       {
-        heading: "What SpinDrop is",
+        heading: `What ${BRAND.name} is`,
         body: [
-          "SpinDrop is a free promotional prize draw. It is not a gambling service, not a lottery you buy into, and not a game of skill. You never pay to enter, you cannot buy additional spins, and no payment of any kind improves your chances of winning.",
+          `${BRAND.name} is a free promotional prize draw. It is not a gambling service, not a lottery you buy into, and not a game of skill. You never pay to enter, you cannot buy additional spins, and no payment of any kind improves your chances of winning.`,
           "There is no wallet, no balance of money, no deposit and no withdrawal. Spins are entries, not currency: they cannot be bought, sold, transferred or redeemed for anything.",
         ],
       },
@@ -59,7 +60,7 @@ export const LEGAL_PAGES: readonly LegalPage[] = [
       {
         heading: "Availability",
         body: [
-          "SpinDrop is provided as-is. Campaigns may be paused or ended in the circumstances set out in the Official Rules. We do not guarantee uninterrupted availability, and an outage does not entitle you to additional spins beyond the daily allocation.",
+          `${BRAND.name} is provided as-is. Campaigns may be paused or ended in the circumstances set out in the Official Rules. We do not guarantee uninterrupted availability, and an outage does not entitle you to additional spins beyond the daily allocation.`,
         ],
       },
       {
@@ -128,7 +129,7 @@ export const LEGAL_PAGES: readonly LegalPage[] = [
     navLabel: "Cookie Policy",
     title: "Cookie Policy",
     standfirst:
-      "SpinDrop uses the smallest set of cookies it can. There is no advertising tracking.",
+      `${BRAND.name} uses the smallest set of cookies it can. There is no advertising tracking.`,
     draftNotice: REVIEW,
     sections: [
       {
@@ -212,7 +213,7 @@ export const LEGAL_PAGES: readonly LegalPage[] = [
       {
         heading: "Current campaign",
         body: [
-          "The current campaign is self-funded by SpinDrop. There is no third-party sponsor, and none is implied anywhere on the site.",
+          `The current campaign is self-funded by ${BRAND.name}. There is no third-party sponsor, and none is implied anywhere on the site.`,
         ],
       },
     ],

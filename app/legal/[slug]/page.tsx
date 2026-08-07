@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { DocumentShell } from "@/app/components/DocumentShell";
 import { LEGAL_PAGES, findLegalPage } from "@/app/legal/content.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 
 /** One route for eight near-identical documents, rather than eight files that drift. */
 export function generateStaticParams() {
@@ -16,7 +17,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const page = findLegalPage(slug);
   if (page === undefined) return {};
-  return { title: `${page.title} — SpinDrop`, description: page.standfirst };
+  return { title: `${page.title} — ${BRAND.name}`, description: page.standfirst };
 }
 
 export default async function LegalPage({

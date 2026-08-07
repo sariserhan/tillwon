@@ -1,12 +1,12 @@
 /**
- * Eligible jurisdictions for a SpinDrop campaign.
+ * Eligible jurisdictions for a campaign.
  *
  * ⚠️ RECOMMENDED, PENDING COUNSEL. This encodes desk research, not legal advice.
  * Every exclusion below carries its reason so a lawyer can confirm or overrule it
  * quickly, which is the whole point of writing it down rather than burying it in
  * an Official Rules paragraph.
  *
- * Sources are listed in docs/superpowers/specs/2026-08-06-spindrop-design.md §17.
+ * Sources are listed in docs/superpowers/specs/2026-08-06-tillwon-design.md §17.
  */
 
 export const ALL_US_JURISDICTIONS = [
@@ -29,7 +29,7 @@ export const EXCLUSIONS: readonly Exclusion[] = [
   {
     code: "TN",
     reason:
-      "Tennessee's consumer protection act makes it a deceptive practice to condition receipt of a prize on consent to promotional use. Because SpinDrop requires a publicity release to accept a prize (winners are not anonymous), Tennessee is incompatible. Tennessee is the ONLY state with this restriction: making publicity optional would reopen it.",
+      "Tennessee's consumer protection act makes it a deceptive practice to condition receipt of a prize on consent to promotional use. Because this platform requires a publicity release to accept a prize (winners are not anonymous), Tennessee is incompatible. Tennessee is the ONLY state with this restriction: making publicity optional would reopen it.",
   },
   {
     code: "AL",
@@ -117,7 +117,7 @@ export function registrationDuty(prizeValueCents: number): RegistrationDuty {
 
 /**
  * Rhode Island registers sweepstakes tied to RETAIL locations when the prize pool
- * exceeds $500, with no bond. SpinDrop is online-only with no in-store component,
+ * exceeds $500, with no bond. The platform is online-only with no in-store component,
  * so RI stays eligible — but a sponsor who ties a campaign to physical stores
  * brings this duty back at a far lower threshold than NY or FL.
  */

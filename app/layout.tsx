@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Archivo, Public_Sans } from "next/font/google";
 import "./globals.css";
+import { BRAND } from "@/app/lib/brand.ts";
 
 // Archivo carries a width axis; the broadcast titling voice lives at its
 // expanded end. Public Sans is the civic register — a public draw, in the
@@ -44,7 +45,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the
 -->`;
 
 export const metadata: Metadata = {
-  title: "SpinDrop — 10 free spins every day",
+  title: `${BRAND.name} — 10 free spins every day`,
   description:
     "Spin for a chance to win the current sponsored prize. No purchase necessary.",
 };

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BRAND } from "@/app/lib/brand.ts";
 
 /**
  * The header rail, shared by every surface. Extracted from the campaign page so
@@ -24,7 +25,7 @@ export function SiteHeader() {
         href="/"
         className="font-display text-lg uppercase tracking-[0.02em] text-enamel sm:text-xl"
       >
-        SpinDrop
+        {BRAND.name}
       </Link>
       <nav aria-label="Main" className="flex items-center gap-4 text-sm sm:gap-6">
         <Link href="/rules" className="hidden text-caption hover:text-enamel sm:inline">

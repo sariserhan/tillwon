@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DocumentShell } from "@/app/components/DocumentShell";
+import { BRAND } from "@/app/lib/brand.ts";
 
 export const metadata: Metadata = {
-  title: "Winners — SpinDrop",
+  title: `Winners — ${BRAND.name}`,
   description:
-    "Every confirmed SpinDrop winner. The archive is empty until the first draw is won.",
+    `Every confirmed ${BRAND.name} winner. The archive is empty until the first draw is won.`,
 };
 
 /**
@@ -27,7 +28,7 @@ export default function WinnersPage() {
             No draw has been won yet
           </p>
           <p className="mx-auto mt-2 max-w-[46ch] text-sm leading-relaxed text-ink-soft">
-            SpinDrop has not yet awarded a prize. When the first draw is won and the
+            {BRAND.name} has not yet awarded a prize. When the first draw is won and the
             winner is verified, they will be published here — and this page will
             never contain anyone who was not.
           </p>

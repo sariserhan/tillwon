@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DocumentShell } from "@/app/components/DocumentShell";
 import { CURRENT_CAMPAIGN } from "@/app/lib/currentCampaign.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 
 export const metadata: Metadata = {
-  title: "Your claim — SpinDrop",
+  title: `Your claim — ${BRAND.name}`,
   description: "The steps a prize claim follows, and what you will need.",
 };
 
@@ -133,7 +134,7 @@ export default async function ClaimPage({
         <h2>Nobody will ever ask you to pay</h2>
         <p>
           There is no fee, no deposit, no shipping charge and no tax payment to us at
-          any stage. If anyone contacts you asking for money to release a SpinDrop
+          any stage. If anyone contacts you asking for money to release a {BRAND.name}
           prize, it is a fraud and not from us. Please{" "}
           <Link href="/legal/abuse" className="underline">
             report it

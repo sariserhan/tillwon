@@ -1,4 +1,4 @@
-# SpinDrop — Full Platform Design Spec
+# TillWon — Full Platform Design Spec
 
 **Date:** 2026-08-06
 **Status:** awaiting review

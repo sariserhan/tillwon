@@ -1,4 +1,5 @@
 import { resolveTier, defaultOddsDenominator } from "@/app/lib/tiers.ts";
+import { BRAND } from "@/app/lib/brand.ts";
 
 /**
  * The live campaign, hardcoded until the backend reads it from Convex
@@ -6,15 +7,22 @@ import { resolveTier, defaultOddsDenominator } from "@/app/lib/tiers.ts";
  * Rules so the published rules cannot drift from what the product does.
  */
 export const CURRENT_CAMPAIGN = {
-  name: "SpinDrop",
+  name: BRAND.name,
   slug: "seed-100-gift-card",
-  sponsorSlug: "spindrop",
+  sponsorSlug: BRAND.slug,
   prizeTitle: "$100 gift card",
+  /**
+   * Printed on the prize card's band. The prize TYPE without its value, because
+   * the value is already the large numeral beneath it — "$100 gift card" there
+   * rendered the amount twice on one object, three times counting the plaque.
+   * A future prize reads "Tesla Model Y" here with the value as the numeral.
+   */
+  prizeFaceLabel: "gift card",
   /** Integer cents. Decides the tier, and therefore the reel count. */
   prizeValueCents: 10_000,
   /** Override the tier default when set. See the hazard note in tiers.ts. */
   oddsDenominator: undefined as number | undefined,
-  sponsorName: "SpinDrop",
+  sponsorName: BRAND.name,
   status: "live" as const,
   dailySpins: 10,
   resetTimezone: "UTC",
