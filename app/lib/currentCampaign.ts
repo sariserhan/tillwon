@@ -7,6 +7,8 @@ import { resolveTier, defaultOddsDenominator } from "@/app/lib/tiers.ts";
  */
 export const CURRENT_CAMPAIGN = {
   name: "SpinDrop",
+  slug: "seed-100-gift-card",
+  sponsorSlug: "spindrop",
   prizeTitle: "$100 gift card",
   /** Integer cents. Decides the tier, and therefore the reel count. */
   prizeValueCents: 10_000,

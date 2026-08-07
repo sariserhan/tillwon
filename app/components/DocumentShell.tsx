@@ -27,7 +27,7 @@ export function DocumentShell({
     <div className="flex min-h-dvh flex-col bg-studio-900">
       <SiteHeader />
 
-      <main className="studio-light flex-1 px-4 py-8 sm:px-6 sm:py-12">
+      <main id="content" className="studio-light flex-1 px-4 py-8 sm:px-6 sm:py-12">
         <article className="mx-auto max-w-[46rem] rounded-[3px] bg-paper px-5 py-8 shadow-[0_18px_40px_rgb(0_0_0/0.45)] ring-1 ring-paper-edge sm:px-10 sm:py-12">
           <h1 className="font-display text-[clamp(1.6rem,4.2vw,2.4rem)] uppercase leading-[1.02] text-ink">
             {title}

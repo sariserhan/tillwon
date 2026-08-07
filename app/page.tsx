@@ -39,7 +39,7 @@ export default function Home() {
         <SiteHeader />
 
         {/* The feed: the prize, lit, as the subject of the programme */}
-        <section className="studio-light relative flex min-h-0 flex-1 flex-col">
+        <section id="content" className="studio-light relative flex min-h-0 flex-1 flex-col">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-studio-900/60 to-transparent" />
 
           <div className="relative flex shrink-0 flex-col items-start gap-3 px-4 pt-4 sm:flex-row sm:justify-between sm:px-6 sm:pt-5">

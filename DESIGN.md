@@ -48,9 +48,12 @@ Measured contrast on the studio ground: caption **7.88:1**, enamel **11.81:1**.
 places hit this and were resolved differently, both deliberately rather than by
 darkening the red, which would have changed the palette and the tally lamp with it:
 
-- The **primary action** is `text-xl font-bold` (20px, weight 700), where the
-  large-text threshold of 3:1 applies and 3.78 clears it. The size is therefore a
-  contrast requirement, not a flourish — do not reduce it.
+- The **primary action** lives in one class, **`.btn-primary`** in `globals.css`,
+  at 1.25rem / weight 700. That is where the large-text threshold of 3:1 applies
+  and 3.78 clears it, so the size and weight are a contrast requirement rather
+  than styling. **Never hand-roll another tally-red button** — the same defect was
+  introduced three separate times (the spin control, the 404 action, and a draft
+  banner) before the rule was centralised. A 1rem bold button on tally red fails.
 - **Draft stamps** on document surfaces do not use tally red at all; they are a
   single black overprint.
 
@@ -240,6 +243,27 @@ Craft floor note: the first version used `border-l-2` in tally red for the draft
 banner and the "still required" panels. That is the banned coloured-left-border
 callout pattern — both are now a solid overprint stripe and a tinted `bg-ink/[0.06]`
 panel respectively.
+
+## Route inventory
+
+| Route | Mode | Notes |
+|---|---|---|
+| `/` | Persuade | Hero, rundown, prize/sponsor detail, results board |
+| `/campaign/[slug]` | Persuade | Share/sponsor landing. **No spin control** — one primary action, not two |
+| `/rules` | Read | Renders from `tiers.ts` + `jurisdictions.ts`, so it cannot drift from the engine |
+| `/winners` | Read | Honest empty archive |
+| `/claim/[reference]` | Operate | Shell. Never says "you won"; never claims to have found a record |
+| `/sponsor/[slug]` | Read | One real sponsor; unknown slugs 404 rather than generating a page |
+| `/legal/[slug]` | Read | Eight documents, all stamped DRAFT |
+| `/sign-in` | Read | Placeholder with **no form** — an inert sign-in form is a phishing pattern |
+| `not-found` | Read | In-world "off air": dark tally lamp, empty studio |
+
+**Accessibility baseline, verified by DOM audit on every surface:** one `h1` per
+page, no skipped heading levels, a skip link as the first focusable element whose
+target sits *after* the header, `aria-label` on both navs to distinguish them,
+single `main`/`header`/`footer` landmarks, no duplicate ids, no unlabelled SVGs,
+no horizontal overflow at 375px, and zero contrast failures across every leaf text
+element.
 
 ## Placeholders to replace
 

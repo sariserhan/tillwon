@@ -22,7 +22,7 @@ export function SiteFooter() {
             </p>
           </div>
 
-          <nav className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
+          <nav aria-label="Legal and site" className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
             <Link href="/rules" className="text-enamel hover:underline">
               Official Rules
             </Link>

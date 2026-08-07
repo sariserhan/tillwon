@@ -11,13 +11,22 @@ import Link from "next/link";
 export function SiteHeader() {
   return (
     <header className="brushed-dark relative z-20 flex items-center justify-between gap-4 px-4 py-2.5 sm:px-6">
+      {/* First focusable element on every page, so a keyboard or screen-reader
+          user can reach the spin control without walking the whole rail. */}
+      <a
+        href="#content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2.5 focus:z-50 focus:rounded-[3px] focus:bg-enamel focus:px-3 focus:py-1.5 focus:text-sm focus:font-semibold focus:text-ink"
+      >
+        Skip to content
+      </a>
+
       <Link
         href="/"
         className="font-display text-lg uppercase tracking-[0.02em] text-enamel sm:text-xl"
       >
         SpinDrop
       </Link>
-      <nav className="flex items-center gap-4 text-sm sm:gap-6">
+      <nav aria-label="Main" className="flex items-center gap-4 text-sm sm:gap-6">
         <Link href="/rules" className="hidden text-caption hover:text-enamel sm:inline">
           Official Rules
         </Link>

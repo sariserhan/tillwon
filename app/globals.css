@@ -191,6 +191,56 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   The primary action.
+
+   Cream on tally red measures 3.78:1 — below the 4.5:1 floor for normal-size
+   text, and above the 3:1 floor that applies at 18.66px bold or larger. So the
+   size and weight here are a CONTRAST REQUIREMENT, not styling: at 1.25rem/700
+   this passes, and at 1rem/700 it does not.
+
+   This exists as one class because the same defect was introduced three times on
+   separate buttons. Do not hand-roll another tally-red button.
+   --------------------------------------------------------------------------- */
+.btn-primary {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-size: 1.25rem; /* 20px — must stay ≥ 18.66px */
+  font-weight: 700; /* must stay ≥ 700 */
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--color-enamel);
+  background-color: var(--color-tally);
+  border-radius: 3px;
+  padding: 0.75rem 1.75rem;
+  box-shadow:
+    0 2px 0 var(--color-tally-dim),
+    0 6px 14px rgb(0 0 0 / 0.45);
+  transition:
+    transform 150ms,
+    box-shadow 150ms,
+    filter 150ms;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 1px 0 var(--color-tally-dim),
+    0 3px 8px rgb(0 0 0 / 0.45);
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
+  background-color: var(--color-alu-600);
+  color: var(--color-enamel-dim);
+  box-shadow: none;
+  filter: none;
+}
+
 /* Filament lamp. A bulb with a hot core and a short falloff — not a page glow. */
 .tally-live {
   background-image: radial-gradient(
