@@ -193,6 +193,34 @@ important text on the page belongs there rather than in dead space.
 Verified: no horizontal overflow at 375px; the primary action sits fully above
 the fold on mobile (bottom 765 of 812).
 
+## Document surfaces (Read mode)
+
+Official Rules, the winner archive, the sign-in placeholder, and eight legal pages
+share `app/components/DocumentShell.tsx`: **a printed sheet under studio light.**
+Cream paper (`--color-paper` `#ece7db`), ink text, `--color-ink-soft` `#5a5044`
+for secondary.
+
+Ink-on-paper rather than the dark ground, for two reasons that agree: a televised
+draw publishes its regulations as printed matter, and a long legal document set in
+cream-on-teal is materially harder to read. This reader is suspicious by default,
+so legibility here is a credibility factor rather than a nicety.
+
+**Measure: `max-w-[53ch]`, which is ~70 actual characters — not `70ch`.** The `ch`
+unit is the width of "0" (9.32px at this size) while an average lowercase character
+is 7.1px, so `max-w-[66ch]` measured **89 characters per line** and overshot the
+readable range. Measured with canvas text metrics, not assumed. Any new prose
+column should be checked the same way rather than trusting the unit.
+
+**Draft stamps are a single black overprint, never tally red.** Two independent
+reasons: red means the draw is live and nothing else may borrow that signal, and
+cream on tally red measured **3.78:1**, under the 4.5:1 floor for text that size.
+Every text/background pair on these pages was measured; zero failures.
+
+Craft floor note: the first version used `border-l-2` in tally red for the draft
+banner and the "still required" panels. That is the banned coloured-left-border
+callout pattern — both are now a solid overprint stripe and a tinted `bg-ink/[0.06]`
+panel respectively.
+
 ## Placeholders to replace
 
 - **`PrizeOnPlinth` card face** — authored SVG standing in for real prize

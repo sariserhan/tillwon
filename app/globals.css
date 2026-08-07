@@ -35,6 +35,13 @@
   /* Secondary text, tinted from the ground's hue — never grey */
   --color-caption: #a8bfbc;
 
+  /* Printed matter. Document surfaces are a physical sheet under studio light,
+     which is both in-world and the right call for reading: a long legal document
+     set in cream-on-teal is materially harder to read than ink on paper. */
+  --color-paper: #ece7db;
+  --color-paper-edge: #d6cfbe;
+  --color-ink-soft: #5a5044;
+
   --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-body: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
 
