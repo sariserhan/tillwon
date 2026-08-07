@@ -88,10 +88,28 @@ costume, no Unicode glyph icons.
 
 ## Icons
 
-Seven reel symbols in `app/components/Symbols.tsx`: 24×24 grid, solid
-`currentColor` fills, matched optical weight, geometric enamel-sign character.
-Painted signs have no hairlines, so neither do these. `SYMBOL_LABELS` supplies
-screen-reader names — the symbol set is never announced by shape alone.
+**Ten** reel symbols — data in `app/lib/symbols.ts`, drawing in
+`app/components/Symbols.tsx`: 24×24 grid, solid `currentColor` fills, matched
+optical weight, geometric enamel-sign character. Painted signs have no
+hairlines, so neither do these. A symbol needing a second plane uses opacity
+`0.55`, the family's only secondary value. `SYMBOL_LABELS` supplies
+screen-reader names — the set is never announced by shape alone.
+
+Seven symbols come from the brief (7, star, diamond, bell, cherry, gift, sponsor
+drop). **Ticket, lamp and microphone were derived from this surface's own world** —
+a raffle stub, the on-air filament bulb, the announcer's microphone — rather than
+from fruit-machine iconography, which the product may not resemble.
+
+**The symbols are decorative and do not set the odds.** The winner is decided by
+the sealed entry counter; symbols are rendered after the outcome exists. 10³ =
+1000 combinations is **not** a 1-in-1000 chance of winning, and the Official Rules
+state the real figure.
+
+Drawing rule, enforced by `npm run check:spin`: reels are drawn uniformly and only
+the jackpot triple is withheld. Individual sevens land at their honest frequency
+(~27% of spins), and two-seven near misses at theirs (~2.7%). Excluding sevens
+outright would make any visible seven a win tell; engineering extra near misses
+would be a banned dark pattern. The check asserts both bounds.
 
 ## Motion
 

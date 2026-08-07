@@ -28,7 +28,7 @@ function Half({
         className="absolute inset-x-0 flex items-center justify-center"
         style={{ height: "200%", top: half === "top" ? "0" : "-100%" }}
       >
-        <ReelSymbol symbol={symbol} className="h-[46%] w-auto text-ink" />
+        <ReelSymbol symbol={symbol} className="h-[54%] w-auto text-ink" />
       </div>
     </div>
   );
@@ -78,7 +78,7 @@ export function FlapDrum({
                 className="absolute inset-x-0 flex items-center justify-center"
                 style={{ height: "200%", top: "0" }}
               >
-                <ReelSymbol symbol={outgoing} className="h-[46%] w-auto text-ink" />
+                <ReelSymbol symbol={outgoing} className="h-[54%] w-auto text-ink" />
               </div>
             </div>
             <div className="h-px w-full bg-ink/45" />

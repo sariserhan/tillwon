@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:spin": "node app/lib/demoSpin.check.ts"
   },
   "dependencies": {
     "next": "16.3.0",
