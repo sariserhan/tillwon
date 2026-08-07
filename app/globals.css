@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   The Public Draw, Broadcast Live
+   A civic television studio staged for a public draw. Physical directional
+   light, never glow. Dark ground is chosen from the use scene: a studio is a
+   dark room with a lit subject, seen on a phone in the evening.
+   --------------------------------------------------------------------------- */
+
+@theme {
+  /* Studio ground — drenched, owns the surface */
+  --color-studio-900: #062a2d;
+  --color-studio-800: #0a3b3f;
+  --color-studio-700: #0d4a4e;
+  --color-studio-600: #135c60;
+  --color-studio-500: #1c7377;
+
+  /* Tungsten key light. A lighting material, not an accent colour. */
+  --color-tungsten: #f0a848;
+  --color-tungsten-deep: #c97b23;
+
+  /* Apparatus */
+  --color-alu-300: #d3d7da;
+  --color-alu-200: #b8bcc0;
+  --color-alu-400: #8d949a;
+  --color-alu-600: #4e565c;
+  --color-enamel: #e8e2d4;
+  --color-enamel-dim: #c9c2b2;
+  --color-ink: #14100c;
+
+  /* Tally red. Means live. Nothing else may use it. */
+  --color-tally: #d6301f;
+  --color-tally-dim: #8d1e12;
+
+  /* Secondary text, tinted from the ground's hue — never grey */
+  --color-caption: #a8bfbc;
+
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --ease-flap: cubic-bezier(0.32, 0, 0.24, 1);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-studio-900);
+    color: var(--color-enamel);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Display voice: Archivo at its expanded width axis. Broadcast titling is
+     wide before it is heavy. */
+  .font-display {
+    font-family: var(--font-display);
+    font-stretch: 125%;
+    letter-spacing: -0.02em;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-tungsten);
+    outline-offset: 3px;
+  }
+}
+
+/* --- The studio: one directional tungsten key from the left, plus the soft
+   spill it throws on the cyclorama. Two layered radial fields, not a mesh. --- */
+.studio-light {
+  background-image:
+    /* Tungsten key: a tight hot centre with a fast falloff, thrown from high
+       left. A wide soft blob reads as a lens flare, which is a camera artefact,
+       not a lit room. */
+    radial-gradient(
+      44% 58% at 13% 6%,
+      rgb(240 168 72 / 0.5) 0%,
+      rgb(240 168 72 / 0.16) 38%,
+      rgb(240 168 72 / 0) 72%
+    ),
+    /* The key's spill across the floor, elongated because it lands at a grazing
+       angle. */
+      radial-gradient(
+        58% 26% at 30% 78%,
+        rgb(240 168 72 / 0.15) 0%,
+        rgb(240 168 72 / 0) 100%
+      ),
+    /* Floor: the cyclorama curves into it, so the join is a soft band rather
+       than a hard horizon. */
+      linear-gradient(
+        180deg,
+        rgb(6 42 45 / 0) 58%,
+        rgb(6 42 45 / 0.45) 74%,
+        rgb(6 42 45 / 0.75) 100%
+      ),
+    /* Cyclorama, brightest where the light lands, falling off to the corners. */
+      radial-gradient(
+        96% 82% at 34% 34%,
+        var(--color-studio-600) 0%,
+        var(--color-studio-700) 38%,
+        var(--color-studio-900) 100%
+      );
+}
+
+/* Brushed aluminium: directional grain, a lit top edge, a shadowed bottom. */
+.brushed {
+  background-image:
+    linear-gradient(
+      180deg,
+      var(--color-alu-300) 0%,
+      var(--color-alu-200) 38%,
+      var(--color-alu-400) 100%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgb(255 255 255 / 0.16) 0px,
+      rgb(255 255 255 / 0.16) 1px,
+      rgb(0 0 0 / 0.05) 1px,
+      rgb(0 0 0 / 0.05) 3px
+    );
+  background-blend-mode: overlay, normal;
+}
+
+.brushed-dark {
+  background-image:
+    linear-gradient(180deg, #5c646a 0%, #40484e 44%, #2b3237 100%),
+    repeating-linear-gradient(
+      90deg,
+      rgb(255 255 255 / 0.09) 0px,
+      rgb(255 255 255 / 0.09) 1px,
+      rgb(0 0 0 / 0.14) 1px,
+      rgb(0 0 0 / 0.14) 3px
+    );
+}
+
+/* --- Split-flap tile -------------------------------------------------------
+   Two clipped halves on a shared perspective. The falling leaf is the top
+   half of the outgoing symbol rotating down over the bottom half of the
+   incoming one. Discrete and countable: a casino reel blurs, a flap counts. */
+.flap {
+  perspective: 420px;
+  perspective-origin: 50% 50%;
+}
+
+.flap-leaf {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.flap-falling {
+  animation: flap-fall 150ms var(--ease-flap) forwards;
+  transform-origin: 50% 100%;
+}
+
+@keyframes flap-fall {
+  from {
+    transform: rotateX(0deg);
+  }
+  to {
+    transform: rotateX(-90deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The result is already in the DOM; motion only reveals it. Cross-fade over
+     the same duration budget so the pacing of the draw survives. */
+  .flap-falling {
+    animation: none;
+  }
+
+  .reduced-fade {
+    animation: reduced-fade 240ms ease-out forwards;
+  }
+
+  @keyframes reduced-fade {
+    from {
+      opacity: 0.35;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* Filament lamp. A bulb with a hot core and a short falloff — not a page glow. */
+.tally-live {
+  background-image: radial-gradient(
+    circle at 42% 36%,
+    #ff9a86 0%,
+    var(--color-tally) 40%,
+    var(--color-tally-dim) 100%
+  );
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.5),
+    0 0 10px 1px rgb(214 48 31 / 0.45);
+}
