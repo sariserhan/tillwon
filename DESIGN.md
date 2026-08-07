@@ -257,6 +257,41 @@ panel respectively.
 | `/legal/[slug]` | Read | Eight documents, all stamped DRAFT |
 | `/sign-in` | Read | Placeholder with **no form** — an inert sign-in form is a phishing pattern |
 | `not-found` | Read | In-world "off air": dark tally lamp, empty studio |
+| `/preview/[state]` | — | **Development only, 404s in production.** Renders the winner-pending panels, which are otherwise unreachable until the backend can award a win |
+
+## The winner-pending states
+
+Two faces of the same campaign status, in `app/components/WinnerPending.tsx`.
+
+**`PotentialWinnerPanel`** — the winner's own view. Deliberately **not
+celebratory**: nothing has been won yet, and confetti here would be the product
+making a claim it cannot support at the exact instant a person is most inclined to
+believe it. The reels above hold their sevens; the panel is a formal printed
+notice stamped "RESULT UNDER REVIEW". That contrast — drama over sober paperwork —
+is the honest register, and it is also what most distinguishes this from a casino.
+
+**The word "won" never appears as a completed fact.** The headline is "You may have
+won", and the body states that nothing has been awarded to anyone. Asserted by a
+DOM check, not just by care.
+
+It is tier-aware: below the $600 tax threshold it explicitly says no tax form is
+required and that nobody should ask for a Social Security number. Above it, the
+W-9 requirement appears. Asking a $100 winner for an SSN would be pure liability.
+
+It also warns that nobody will ever ask for payment, because a prize notification
+is exactly the moment an advance-fee fraud impersonates.
+
+**`CampaignPausedNotice`** — everyone else's view. The campaign stays visible on
+purpose: a promotion that vanishes mid-flight looks exactly like a scam. It states
+what happens if verification fails, because "paused indefinitely" is the reading
+people otherwise reach for.
+
+**Why the preview route is gated.** A stranger seeing "You may have won" with a
+claim reference would reasonably believe it, and a fabricated prize notice is the
+worst thing this product could display. The route is gated on `NODE_ENV`, every
+value on it is labelled fake, and the gate is verified against a real production
+server rather than assumed. Delete the route once the backend renders these from
+real campaign state.
 
 **Accessibility baseline, verified by DOM audit on every surface:** one `h1` per
 page, no skipped heading levels, a skip link as the first focusable element whose
