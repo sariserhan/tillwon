@@ -5,35 +5,22 @@ import { FlapDrum } from "./FlapDrum";
 import { SYMBOL_LABELS, type SymbolKey } from "@/app/lib/symbols.ts";
 import { demoSpin, reelQueue } from "@/app/lib/demoSpin.ts";
 import { formatOdds } from "@/app/lib/tiers.ts";
+import {
+  FLAP_MS,
+  SETTLE_TAIL_MS,
+  flipTimes,
+  settleMs,
+} from "@/app/lib/reelTiming.ts";
 
 const DAILY_SPINS = 10;
 
-/** First reel settles here; the last lands 1100ms later whatever the count. */
-const FIRST_SETTLE_MS = 1500;
-const SETTLE_SPREAD_MS = 1100;
-
-function settleMs(index: number, columns: number): number {
-  if (columns <= 1) return FIRST_SETTLE_MS;
-  return Math.round(
-    FIRST_SETTLE_MS + (index * SETTLE_SPREAD_MS) / (columns - 1),
-  );
-}
-
-type DrumState = { incoming: SymbolKey; outgoing: SymbolKey; falling: boolean };
-
-/** Decelerating flip times filling `total`, landing the final flip exactly on it. */
-function flipTimes(total: number): number[] {
-  const times: number[] = [];
-  let t = 0;
-  let gap = 85;
-  while (t + gap < total) {
-    t += gap;
-    times.push(t);
-    gap *= 1.16;
-  }
-  times.push(total);
-  return times;
-}
+/** flipId increments per flip so FlapDrum can remount its animated nodes. */
+type DrumState = {
+  incoming: SymbolKey;
+  outgoing: SymbolKey;
+  falling: boolean;
+  flipId: number;
+};
 
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -77,7 +64,7 @@ function restingFaces(columns: number): DrumState[] {
   ];
   return Array.from({ length: columns }, (_, i) => {
     const s = seed[i % seed.length];
-    return { incoming: s, outgoing: s, falling: false };
+    return { incoming: s, outgoing: s, falling: false, flipId: 0 };
   });
 }
 
@@ -141,7 +128,14 @@ export function SpinDeck({
     const result = pendingResult.current;
     if (!result) return;
     clearTimers();
-    setDrums(result.map((s) => ({ incoming: s, outgoing: s, falling: false })));
+    setDrums((prev) =>
+      result.map((s, d) => ({
+        incoming: s,
+        outgoing: s,
+        falling: false,
+        flipId: (prev[d]?.flipId ?? 0) + 1,
+      })),
+    );
     settle(resultMessage(result, pendingRemaining.current));
   }, [settle]);
 
@@ -166,7 +160,12 @@ export function SpinDeck({
           window.setTimeout(() => {
             setDrums((prev) => {
               const next = [...prev];
-              next[d] = { incoming: final, outgoing: final, falling: true };
+              next[d] = {
+                incoming: final,
+                outgoing: final,
+                falling: true,
+                flipId: prev[d].flipId + 1,
+              };
               return next;
             });
           }, settleMs(d, columns)),
@@ -191,6 +190,7 @@ export function SpinDeck({
                 incoming: queue[i],
                 outgoing: prev[d].incoming,
                 falling: true,
+                flipId: prev[d].flipId + 1,
               };
               return next;
             });
@@ -201,7 +201,7 @@ export function SpinDeck({
                   next[d] = { ...next[d], falling: false };
                   return next;
                 });
-              }, 150),
+              }, FLAP_MS),
             );
           }, at),
         );
@@ -209,7 +209,7 @@ export function SpinDeck({
     });
 
     timers.current.push(
-      window.setTimeout(() => settle(resultMessage(symbols, left)), lastSettle + 180),
+      window.setTimeout(() => settle(resultMessage(symbols, left)), lastSettle + SETTLE_TAIL_MS),
     );
   };
 
@@ -234,6 +234,7 @@ export function SpinDeck({
                   incoming={drum.incoming}
                   outgoing={drum.outgoing}
                   falling={drum.falling}
+                  flipId={drum.flipId}
                   reduced={reduced}
                   label={`Reel ${i + 1} of ${columns}: ${SYMBOL_LABELS[drum.incoming]}`}
                 />

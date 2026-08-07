@@ -38,6 +38,7 @@ export function FlapDrum({
   incoming,
   outgoing,
   falling,
+  flipId,
   reduced,
   label,
 }: {
@@ -46,6 +47,11 @@ export function FlapDrum({
   /** The symbol hinging away. */
   outgoing: SymbolKey;
   falling: boolean;
+  /**
+   * Increments once per flip. Used as a React key so the animated elements
+   * remount and their animations restart — see the comments at each use.
+   */
+  flipId: number;
   reduced: boolean;
   label: string;
 }) {
@@ -59,7 +65,14 @@ export function FlapDrum({
         {/* Resting faces: the incoming symbol's top is revealed as the leaf
             falls; its bottom is already in place. */}
         <Half symbol={incoming} half="top" />
+        {/*
+          keyed by flipId so the cross-fade restarts on every flip. Without the
+          key React reuses this node, and a `forwards` animation that has already
+          finished never plays again — reduced-motion users saw a fade on their
+          first spin and nothing afterwards.
+        */}
         <Half
+          key={`bottom-${flipId}`}
           symbol={incoming}
           half="bottom"
           className={reduced && falling ? "reduced-fade" : ""}
@@ -69,10 +82,19 @@ export function FlapDrum({
             under the upper leaf. */}
         <div className="absolute inset-x-0 top-1/2 h-px -translate-y-px bg-ink/35" />
 
-        {/* The falling leaf. Only present mid-flip, and skipped entirely under
-            reduced motion, where the faces cross-fade instead. */}
+        {/*
+          The falling leaf, keyed by flipId for the same reason and more urgently:
+          flips start 85ms apart while this animation runs 150ms, so `falling`
+          stays true across several flips. Unkeyed, the node persisted, `flap-fall`
+          completed once, and every later flip rendered a leaf frozen edge-on at
+          rotateX(-90deg) — the reels appeared to snap between symbols with no
+          flap at all. The key forces a remount, so each flip is its own fall.
+        */}
         {falling && !reduced && (
-          <div className="absolute inset-x-0 top-0 h-1/2 flap-leaf flap-falling">
+          <div
+            key={`leaf-${flipId}`}
+            className="absolute inset-x-0 top-0 h-1/2 flap-leaf flap-falling"
+          >
             <div className="relative h-full overflow-hidden bg-enamel">
               <div
                 className="absolute inset-x-0 flex items-center justify-center"

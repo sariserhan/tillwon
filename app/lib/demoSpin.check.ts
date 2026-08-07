@@ -7,7 +7,15 @@
  * column count, not just at three.
  */
 import assert from "node:assert/strict";
-import { demoSpin } from "./demoSpin.ts";
+import { demoSpin, reelQueue } from "./demoSpin.ts";
+import {
+  FIRST_SETTLE_MS,
+  FLAP_MS,
+  SETTLE_SPREAD_MS,
+  flipTimes,
+  settleMs,
+  spinDurationMs,
+} from "./reelTiming.ts";
 import { SYMBOL_KEYS, isJackpot } from "./symbols.ts";
 import {
   TIERS,
@@ -97,6 +105,63 @@ for (const t of TIERS) {
     t.tier >= 5,
     `tier ${t.tier} registration duty should be ${t.tier >= 5}`,
   );
+}
+
+/* ---- reel timing --------------------------------------------------------- */
+
+// The spec budgets 2.5-4s per spin. This must hold at every reel count, because
+// the animation cannot be watched in a headless environment — the numbers are the
+// only guarantee available.
+for (const t of TIERS) {
+  const total = spinDurationMs(t.columns);
+  assert.ok(
+    total >= 2500 && total <= 4000,
+    `tier ${t.tier} (${t.columns} reels): spin takes ${total}ms, outside the 2500-4000ms budget`,
+  );
+  assert.equal(settleMs(0, t.columns), FIRST_SETTLE_MS, "first reel settles on time");
+  assert.equal(
+    settleMs(t.columns - 1, t.columns),
+    FIRST_SETTLE_MS + SETTLE_SPREAD_MS,
+    "last reel lands one full spread after the first, whatever the count",
+  );
+
+  // Reels must land in order, each strictly after the one before it.
+  for (let i = 1; i < t.columns; i++) {
+    assert.ok(
+      settleMs(i, t.columns) > settleMs(i - 1, t.columns),
+      `tier ${t.tier}: reel ${i} does not land after reel ${i - 1}`,
+    );
+  }
+}
+
+{
+  const times = flipTimes(FIRST_SETTLE_MS);
+
+  assert.ok(times.length >= 8, `only ${times.length} flips — the reel barely moves`);
+  assert.equal(times.at(-1), FIRST_SETTLE_MS, "the final flip lands exactly on settle");
+
+  const gaps = times.map((t, i) => (i === 0 ? t : t - times[i - 1]));
+  for (let i = 1; i < times.length; i++) {
+    assert.ok(times[i] > times[i - 1], "flip times must strictly increase");
+  }
+  // Decelerating: every gap except the last (which absorbs the remainder) grows.
+  for (let i = 1; i < gaps.length - 1; i++) {
+    assert.ok(
+      gaps[i] > gaps[i - 1],
+      `gap ${i} (${gaps[i]}ms) is not longer than gap ${i - 1} (${gaps[i - 1]}ms) — the reel is not slowing down`,
+    );
+  }
+  // The first gap is deliberately shorter than one flap, so leaves overlap. That
+  // only reads as motion because FlapDrum remounts the leaf per flip.
+  assert.ok(
+    gaps[0] < FLAP_MS,
+    "the opening gap should be shorter than a flap, for continuous motion",
+  );
+
+  // reelQueue must supply exactly one symbol per flip, ending on the result.
+  const queue = reelQueue("SEVEN", times.length - 1);
+  assert.equal(queue.length, times.length, "one queued symbol per flip");
+  assert.equal(queue.at(-1), "SEVEN", "the queue ends on the actual result");
 }
 
 /* ---- drawing rule, every tier -------------------------------------------- */
