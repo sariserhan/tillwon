@@ -2,6 +2,8 @@ import Link from "next/link";
 import { SpinDeck } from "./components/SpinDeck";
 import { SiteHeader } from "./components/SiteHeader";
 import { SiteFooter } from "./components/SiteFooter";
+import { HowItWorks } from "./components/HowItWorks";
+import { PrizeAndSponsor } from "./components/PrizeAndSponsor";
 import {
   PrizeOnPlinth,
   SealedCommitment,
@@ -121,9 +123,13 @@ export default function Home() {
         </section>
       </div>
 
+      <HowItWorks oddsDenominator={CURRENT_ODDS} />
+
+      <PrizeAndSponsor />
+
       {/* The results board. Honestly empty: no draw has been held
           (PRODUCT.md, Evidence on Hand). */}
-      <section className="bg-studio-800 px-4 py-7 sm:px-6">
+      <section className="bg-studio-900 px-4 py-7 sm:px-6">
         <div className="mx-auto max-w-7xl">
           <h2 className="font-display text-sm uppercase tracking-[0.16em] text-caption">
             Past draws

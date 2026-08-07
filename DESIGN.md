@@ -44,6 +44,26 @@ anything.
 
 Measured contrast on the studio ground: caption **7.88:1**, enamel **11.81:1**.
 
+**Cream on tally red is 3.78:1** — below the 4.5:1 floor for normal-size text. Two
+places hit this and were resolved differently, both deliberately rather than by
+darkening the red, which would have changed the palette and the tally lamp with it:
+
+- The **primary action** is `text-xl font-bold` (20px, weight 700), where the
+  large-text threshold of 3:1 applies and 3.78 clears it. The size is therefore a
+  contrast requirement, not a flourish — do not reduce it.
+- **Draft stamps** on document surfaces do not use tally red at all; they are a
+  single black overprint.
+
+Anything else that wants cream on tally red must clear 3:1 at large-text size or
+pick another surface.
+
+**Measuring contrast correctly here needs care**, and three false positives were
+produced before the real defect surfaced. A checker must resolve `.brushed` /
+`.brushed-dark` explicitly, because they paint with `background-image` and a
+`backgroundColor` walk falls through them to a dark ancestor; and it must measure
+only leaf text elements, because a container's inherited colour is not the colour
+its child text is painted in.
+
 ## Light
 
 `.studio-light` composes four layers: a tight tungsten key from high left with a

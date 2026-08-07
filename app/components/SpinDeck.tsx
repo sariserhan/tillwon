@@ -255,7 +255,12 @@ export function SpinDeck({
               onClick={spin}
               disabled={spinning || remaining === 0}
               aria-busy={spinning}
-              className="font-display rounded-[3px] bg-tally px-7 py-3.5 text-lg uppercase text-enamel shadow-[0_2px_0_var(--color-tally-dim),0_6px_14px_rgb(0_0_0/0.45)] transition-[transform,box-shadow] duration-150 hover:brightness-110 active:translate-y-px active:shadow-[0_1px_0_var(--color-tally-dim),0_3px_8px_rgb(0_0_0/0.45)] disabled:cursor-not-allowed disabled:bg-alu-600 disabled:text-enamel-dim disabled:shadow-none"
+              /* text-xl + bold is a contrast requirement, not a flourish: cream
+                 on tally red measures 3.78:1, short of the 4.5:1 floor for normal
+                 text but clear of the 3:1 floor that applies at 18.66px bold and
+                 above. Deepening the red would have fixed it too, at the cost of
+                 changing the committed palette and the tally lamp with it. */
+              className="font-display rounded-[3px] bg-tally px-7 py-3.5 text-xl font-bold uppercase text-enamel shadow-[0_2px_0_var(--color-tally-dim),0_6px_14px_rgb(0_0_0/0.45)] transition-[transform,box-shadow] duration-150 hover:brightness-110 active:translate-y-px active:shadow-[0_1px_0_var(--color-tally-dim),0_3px_8px_rgb(0_0_0/0.45)] disabled:cursor-not-allowed disabled:bg-alu-600 disabled:text-enamel-dim disabled:shadow-none"
             >
               {remaining === 0 ? "No spins left today" : "Spin now"}
             </button>
