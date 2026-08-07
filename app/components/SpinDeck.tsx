@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { FlapDrum } from "./FlapDrum";
 import { SYMBOL_LABELS, type SymbolKey } from "@/app/lib/symbols.ts";
 import { demoSpin, reelQueue } from "@/app/lib/demoSpin.ts";
@@ -55,6 +56,30 @@ function useResetCountdown() {
     return () => window.clearInterval(id);
   }, []);
   return label;
+}
+
+/**
+ * A caption plate in the apparatus's own material. Used by the out-of-spins state
+ * now, and by the typed spin-error codes once the backend can return them.
+ */
+function DeckNotice({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      role="status"
+      className="brushed-dark max-w-[30rem] rounded-[3px] px-4 py-3 shadow-[0_2px_6px_rgb(0_0_0/0.5)]"
+    >
+      <p className="font-display text-xs uppercase tracking-[0.14em] text-enamel">
+        {title}
+      </p>
+      <p className="mt-1 text-sm leading-relaxed text-enamel">{children}</p>
+    </div>
+  );
 }
 
 /** Resting faces, so a fresh machine is not eight identical tiles. */
@@ -250,29 +275,50 @@ export function SpinDeck({
         </div>
 
         <div className="flex min-w-0 shrink-0 flex-col justify-center gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={spin}
-              disabled={spinning || remaining === 0}
-              aria-busy={spinning}
-              /* .btn-primary carries the size/weight the contrast floor requires.
-                 See globals.css — do not restyle this inline. */
-              className="btn-primary"
-            >
-              {remaining === 0 ? "No spins left today" : "Spin now"}
-            </button>
-
-            {spinning && (
+          {/*
+            Out of spins replaces the control rather than greying it out. A
+            disabled button that cannot re-enable for another twenty hours is a
+            dead end, and its label only repeated the counter beneath it. The
+            notice states the recovery — when spins return — and closes the door
+            on the instinct the product must never monetise.
+          */}
+          {remaining === 0 && !spinning ? (
+            <DeckNotice title="Out of spins today">
+              Your {DAILY_SPINS} free spins come back
+              {resetIn ? ` in ${resetIn}` : " at the daily reset"}. There is no way
+              to get more before then, and nothing to buy — that is the whole point.{" "}
+              <Link
+                href="/rules"
+                className="underline decoration-enamel/40 hover:decoration-enamel"
+              >
+                Official Rules
+              </Link>
+            </DeckNotice>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={skip}
-                className="rounded-[3px] border border-enamel/35 px-4 py-2.5 text-sm uppercase tracking-wide text-enamel hover:border-enamel/70"
+                onClick={spin}
+                disabled={spinning}
+                aria-busy={spinning}
+                /* .btn-primary carries the size/weight the contrast floor requires.
+                   See globals.css — do not restyle this inline. */
+                className="btn-primary"
               >
-                Skip
+                Spin now
               </button>
-            )}
-          </div>
+
+              {spinning && (
+                <button
+                  type="button"
+                  onClick={skip}
+                  className="rounded-[3px] border border-enamel/35 px-4 py-2.5 text-sm uppercase tracking-wide text-enamel hover:border-enamel/70"
+                >
+                  Skip
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Spent ticks are hollow as well as dimmed — never colour alone. */}
           <div className="flex flex-col gap-1.5">
@@ -283,7 +329,7 @@ export function SpinDeck({
                   className={
                     i < remaining
                       ? "h-3.5 w-2 rounded-[1px] bg-enamel"
-                      : "h-3.5 w-2 rounded-[1px] border border-enamel/30 bg-transparent"
+                      : "h-3.5 w-2 rounded-[1px] border border-enamel/45 bg-transparent"
                   }
                 />
               ))}
@@ -292,7 +338,9 @@ export function SpinDeck({
               <span className="text-enamel">
                 {remaining} of {DAILY_SPINS} free spins left today
               </span>
-              {resetIn && <> · resets in {resetIn}</>}
+              {/* Suppressed at zero: DeckNotice already carries the reset time,
+                  and two copies read as a system unsure what it is telling you. */}
+              {resetIn && remaining > 0 && <> · resets in {resetIn}</>}
             </p>
           </div>
         </div>
