@@ -110,7 +110,7 @@ campaigns: defineTable({
     v.literal("suspended"), v.literal("cancelled"),
   ),
   startAt: v.number(),
-  endAt: v.number(),                        // see [BLOCKED] below — required, not optional
+  endAt: v.optional(v.number()),            // absent = runs until a winner is confirmed
   dailySpins: v.number(),                   // default 10
   resetTimezone: v.string(),                // IANA, default "UTC"
   resetHour: v.number(),                    // 0-23, default 0
@@ -143,12 +143,12 @@ campaigns: defineTable({
   .index("by_slug", ["slug"])
 ```
 
-> **[BLOCKED — PRODUCT.md open decision.]** `endAt` is modeled as **required**. The brief's headline
-> promise is "stays live until someone wins," but US state registration and bonding regimes for
-> prizes over ~$5,000 assume a stated promotion period, and the brief itself (§3.3) says not to
-> promise a campaign runs forever. Making it required is the reversible choice: a far-future date
-> behaves as open-ended, whereas making it optional and later discovering it is mandatory means a
-> migration plus republished Official Rules. If counsel confirms open-ended is filable, relax it.
+> **[RESOLVED 2026-08-06 — no end date.]** Campaigns run until a valid winner is confirmed. `endAt`
+> is optional and left unset. This is unproblematic below the ~$5,000 prize threshold that triggers
+> New York and Florida registration and bonding, so it is correct for the seed campaign. It becomes a
+> real constraint the first time a campaign carries a prize above that threshold, because those
+> filings assume a stated promotion period. The field exists so a future high-value campaign can set
+> one without a migration; the Official Rules template must accommodate both shapes.
 
 `fixedProbability` is **absent by design.** See §4.
 
@@ -309,7 +309,7 @@ claims: defineTable({
   //     v.literal("submitted"), v.literal("verified"), v.literal("rejected"),
   //   )
   disqualificationReason: v.optional(v.string()),
-  publishConsent: v.boolean(),
+  publicityReleaseAcceptedAt: v.optional(v.number()),   // required to accept the prize, see §7
   approvedAt: v.optional(v.number()),
   completedAt: v.optional(v.number()),
 })
@@ -322,7 +322,8 @@ claimDocuments: defineTable({
   claimId: v.id("claims"),
   kind: v.union(
     v.literal("government_id"), v.literal("proof_of_address"),
-    v.literal("tax_form"), v.literal("affidavit"), v.literal("other"),
+    v.literal("tax_form"),                  // W-9; the TIN stays inside the file, see §7
+    v.literal("affidavit"), v.literal("publicity_photo"), v.literal("other"),
   ),
   r2Key: v.string(),                        // R2, not Convex storage — see §7
   originalFilename: v.string(),             // sanitized
@@ -343,24 +344,28 @@ audit trail with no timestamps and no actor.
 ```ts
 winnerArchive: defineTable({
   campaignId: v.id("campaigns"),
-  firstName: v.string(),
-  lastInitial: v.string(),
-  city: v.optional(v.string()),
+  fullName: v.string(),                     // real first + last name, per 2026-08-06 decision
   regionOrCountry: v.string(),
+  city: v.optional(v.string()),
   prizeTitle: v.string(),
   sponsorName: v.string(),
   wonAt: v.number(),
   prizeImageStorageId: v.optional(v.id("_storage")),
-  winnerPhotoStorageId: v.optional(v.id("_storage")),
+  winnerPhotoStorageId: v.id("_storage"),   // required — winners are not anonymous
   testimonial: v.optional(v.string()),
 }).index("by_won_at", ["wonAt"])
 ```
 
-**A separate table, not a view over claims and users.** This is the single most valuable structural
-decision in the model for privacy: the public winner query reads a table that physically contains
-only consented fields. There is no code path where a missing `.select()` or a widened join leaks a
-legal name, an address, or an email onto a public page. Publishing is an explicit admin mutation that
-copies consented values across.
+**A separate table, not a view over claims and users.** This remains the most valuable structural
+decision in the model even though publication is now mandatory rather than opt-in, and the reason
+shifts rather than disappears. The public query reads a table that physically contains *only* the
+fields intended for publication. Name and photo are published by decision; date of birth, SSN or
+ITIN, government ID, and address are not, and they live in `claims` and `claimDocuments` where no
+public code path reaches them. A single table holding both would put a winner's DOB one forgotten
+filter away from a public page.
+
+Publishing stays an explicit admin mutation that copies values across, so the act of making a person
+public is a recorded event with an actor and a timestamp.
 
 ### auditLogs, devices, notifications, sponsorUsers, riskEvents
 
@@ -614,11 +619,12 @@ readable, because a promotion that vanishes mid-flight looks exactly like a scam
 Rules, because the brief (§8.3) requires the behavior be documented before launch. Deciding it after
 a disqualification is deciding it with a known outcome in view.
 
-> **[BLOCKED — PRODUCT.md open decision.]** Which policy is the default is undecided.
-> `select_alternate` requires additionally specifying *how* an alternate is chosen; if that is
-> "next matching entry," the engine needs a second target, which is design work this spec does not
-> yet contain. Recommendation: default `resume_campaign`, which needs no extra mechanism — the
-> campaign returns to live and the next entry to reach the target wins.
+> **[RESOLVED by implication 2026-08-06 — `resume_campaign`.]** With no end date and the promise that
+> the prize stays live until someone wins, `resume_campaign` is the only policy consistent with the
+> product. A disqualified claimant returns the campaign to `live`, the winning shard target is left
+> untouched, and the next spin to reach it wins. `select_alternate` would need a second pre-committed
+> target and `end_campaign` would contradict the headline promise. **Confirm explicitly before
+> launch**, since this text goes into the Official Rules verbatim.
 
 ---
 
@@ -627,6 +633,47 @@ a disqualification is deciding it with a known outcome in view.
 The claimant sees `/claim/[claimReference]`: prize, reference, required steps, deadline, uploaded
 documents, verification status, support contact, Official Rules link. Access requires being the
 authenticated claimant; the reference is not itself a credential.
+
+### Winner verification requirements — decided 2026-08-06
+
+A potential winner must provide, before the prize is released:
+
+| Requirement | Track | Stored as |
+|---|---|---|
+| Government-issued photo ID | `identityStatus` | R2 document |
+| Legal first and last name | `identityStatus` | `claims` fields |
+| Date of birth | `identityStatus` | `claims` field, never published |
+| Photograph for publication | `eligibilityStatus` | R2, copied to `winnerArchive` on publish |
+| Signed publicity release | `eligibilityStatus` | R2 document + `publicityReleaseAcceptedAt` |
+| Signed eligibility affidavit | `eligibilityStatus` | R2 document |
+| Address verification | `addressStatus` | R2 document |
+| SSN or ITIN on a W-9 | `taxStatus` | **see below** |
+
+**Winners are not anonymous.** Accepting the prize requires the publicity release, and name and photo
+are published to the winner archive. Two consequences the Official Rules must carry from day one:
+
+- The publicity release must be a **stated condition of entry in the Official Rules before the first
+  spin**. It cannot be introduced once a winner exists. At least one US state restricts conditioning
+  prize receipt on a publicity release, so the jurisdiction list and this requirement must be reviewed
+  together, not separately.
+- The archive publishes name, city or region, and photo. It never publishes date of birth, ID
+  documents, address, or tax data, which is why `winnerArchive` is a separate table (§2).
+
+### The SSN rule: it never enters the database
+
+Tax reporting (1099-MISC) applies at **$600 and above**, so the seed campaign's $100 gift card needs
+no TIN at all — collecting one there is pure liability with no legal benefit. The `taxStatus` track
+starts as `not_required` and is only engaged when prize value crosses the threshold.
+
+When it is required, the SSN or ITIN lives **only inside the W-9 document in restricted R2 storage.**
+There is no Convex field for it, at any point, in any table.
+
+The application never needs to read the number — it needs to know a W-9 was received and reviewed,
+which `taxStatus` records. A TIN in a database field is queryable, appears in logs and error traces,
+is replicated into every backup, and places the platform under state breach-notification statutes
+that generally require encryption at rest for exactly this identifier. The same value inside a
+presigned-URL-gated document carries a fraction of that exposure for none of the functionality.
+Admin review of tax documents is therefore a document view, never a form field.
 
 **Claim documents go to R2, not Convex storage.** Convex `getUrl` returns an unguessable but
 long-lived public URL, and the brief requires signed URLs with restricted access for
@@ -853,14 +900,27 @@ actual threat; encryption defends against a weaker one), and **midnight fan-out 
 
 Carried from PRODUCT.md, with what each one blocks:
 
-1. **Eligible jurisdictions** — blocks checkpoint 3 and all Official Rules text. NY and FL advance
-   registration and bonding for prizes over ~$5,000 constrain the launch date, roughly 30 days out.
-2. **Hard end date required or optional** — blocks the schema at checkpoint 1. Spec assumes required.
-3. **Disqualification policy default** — blocks checkpoint 6. Spec recommends `resume_campaign`.
-4. **Actual odds** (`projectedVolume`) — blocks activating a real campaign, not building one. Needs a
+**Still open:**
+
+1. **Eligible jurisdictions** — blocks checkpoint 3 and all Official Rules text. The last remaining
+   pre-code blocker. Two things now depend on it together: NY and FL advance registration and bonding
+   for prizes over ~$5,000 constrain a future launch date by roughly 30 days, and the mandatory
+   publicity release (§7) may be unenforceable in at least one US state, so the jurisdiction list and
+   the publicity requirement must be reviewed as one question.
+2. **Actual odds** (`projectedVolume`) — blocks activating a real campaign, not building one. Needs a
    traffic estimate that does not exist yet.
-5. **Whether the reels ever pay smaller than the jackpot** — spec builds binary per the brief. If
+3. **Whether the reels ever pay smaller than the jackpot** — spec builds binary per the brief. If
    tiered rewards are ever wanted, `spins.symbols` and a `prizeTier` field absorb it without
    touching the winner engine, but the Official Rules would need republishing.
 
-1 through 3 must be answered before code. 4 before launch. 5 is answerable later at a known cost.
+**Resolved 2026-08-06:**
+
+4. **End date** — none. Campaigns run until a valid winner is confirmed. `endAt` optional. Correct
+   below the ~$5,000 prize threshold; revisit above it (§2).
+5. **Disqualification policy** — `resume_campaign`, by implication of the open-ended promise. Needs
+   explicit confirmation before launch because it goes into the Official Rules verbatim (§6).
+6. **Winner verification and anonymity** — full identity verification, and winners are published by
+   name and photograph (§7). Two derived requirements: the publicity release must be in the Official
+   Rules before the first spin, and no SSN or ITIN is ever stored in a database field.
+
+Item 1 must be answered before code. 2 before launch. 3 is answerable later at a known cost.

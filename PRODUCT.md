@@ -122,6 +122,15 @@ three-second animation resolving to a loss. There is no second act to fall back 
 - Sponsors cannot select a winner, change odds, reach user identity data, contact users without
   consent, or alter the Official Rules after launch.
 - An emergency campaign pause control is required.
+- **Winners are not anonymous** (decided 2026-08-06). A potential winner must provide government
+  photo ID, legal first and last name, date of birth, a photograph, a signed publicity release, an
+  eligibility affidavit, address verification, and — only once prize value reaches the $600 tax
+  reporting threshold — an SSN or ITIN on a W-9. Name and photograph are published to the winner
+  archive. Date of birth, ID, address, and tax data are never published. The publicity release must
+  appear in the Official Rules before the first spin of a campaign, since it cannot be introduced
+  after a winner exists.
+- **No SSN or ITIN is ever stored in a database field.** It lives only inside the W-9 document in
+  restricted storage. The platform records that a W-9 was received and reviewed, never the number.
 - Vocabulary is binding: **spins** (never bets, credits, wagers, or plays), **prize** (never payout
   or balance), **campaign**, **claim**, **Official Rules**, **potential winner**.
 
@@ -147,10 +156,10 @@ worse. One engine, chosen deliberately.
   above roughly $5,000 trigger advance registration and surety bonding in New York and Florida,
   filed about 30 days before the promotion opens. That is a constraint on the launch *date*, not a
   hardening task to defer.
-- **Whether every campaign carries a hard maximum end date.** The brief's headline promise is "this
-  prize stays live until someone wins," but an open-ended promotion is difficult to square with
-  registration regimes that assume a stated period. This determines whether the end-date field is
-  optional or required, so it must be settled before the schema is written.
+- ~~**Whether every campaign carries a hard maximum end date.**~~ **Resolved 2026-08-06: no end
+  date.** Campaigns run until a valid winner is confirmed. This is unproblematic below the ~$5,000
+  prize threshold that triggers New York and Florida registration and bonding, so it is correct for
+  the seed campaign, and becomes a live constraint the first time a prize exceeds that value.
 - **Whether the reels ever produce anything smaller than the jackpot.** The brief specifies binary
   win-or-nothing, and that stands as the confirmed requirement. Concern on record: at the stated
   odds, a user can play every day for a year and experience nothing but ten losses a day, which is
@@ -159,9 +168,11 @@ worse. One engine, chosen deliberately.
 - **Actual odds.** Cannot be chosen in the abstract. They must be derived from projected spin volume
   and intended campaign length, which means the number depends on a traffic estimate that does not
   exist yet.
-- **Disqualification resolution.** If a potential winner fails verification, the Official Rules must
-  already say what happens — campaign resumes, alternate winner selected, or another defined process.
-  Undecided, and it cannot be decided after a disqualification occurs.
+- ~~**Disqualification resolution.**~~ **Resolved by implication 2026-08-06: the campaign resumes.**
+  A disqualified claimant returns the campaign to live with the winning target untouched, and the next
+  entry to reach it wins. This is the only policy consistent with an open-ended "until someone wins"
+  promise. Needs explicit confirmation before launch, because the wording enters the Official Rules
+  verbatim.
 
 ## Brand Commitments
 
