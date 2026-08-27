@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SpinDeck } from "./components/SpinDeck";
+import {
+  CampaignPausedNotice,
+  PotentialWinnerPanel,
+} from "./components/WinnerPending";
 import { SiteHeader } from "./components/SiteHeader";
 import { SiteFooter } from "./components/SiteFooter";
 import { HowItWorks } from "./components/HowItWorks";
@@ -13,7 +18,7 @@ import {
   SealedCommitment,
   TallyLamp,
 } from "./components/StudioFurniture";
-import { formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
+import { formatMoney } from "@/convex/lib/tiers.ts";
 
 /**
  * The prize's type without its value, e.g. "gift card" from "$100 gift card" —
@@ -26,6 +31,25 @@ import { formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
  */
 function faceLabelFrom(title: string): string {
   return title.replace(/^\$[\d,]+(\.\d+)?\s+/, "");
+}
+
+/**
+ * The date a claim must be started by, in the visitor's own locale.
+ *
+ * There is no `claimDeadlineDays` on the campaign schema yet. `convex/spins.ts`
+ * hardcodes the same 14 days when it opens the claim and `app/rules/page.tsx`
+ * mirrors the literal for the published rules; this is the third mirror of one
+ * source of truth, and all three move together when the schema carries it.
+ *
+ * Called from the win handler, never during render, so the date is fixed at the
+ * moment of the result rather than recomputed.
+ */
+function claimDeadlineLabel(): string {
+  return new Date(Date.now() + 14 * 24 * 3_600_000).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 /**
@@ -42,6 +66,15 @@ function faceLabelFrom(title: string): string {
  */
 export default function Home() {
   const active = useQuery(api.campaigns.getActiveCampaign, {});
+  // Set only by the deck, from the server's own mutation result, and only when
+  // that result says isPotentialWinner. The client never decides this. The
+  // deadline is frozen alongside the reference at the moment of the win rather
+  // than recomputed per render, so the date cannot drift under a re-render.
+  const [win, setWin] = useState<{
+    reference: string;
+    deadline: string;
+  } | null>(null);
+
   if (active === undefined) return <main className="min-h-dvh bg-studio-900" />;
   if (active === null) {
     return (
@@ -56,6 +89,46 @@ export default function Home() {
   const { campaign, sponsor, prize, rules, oddsDenominator } = active;
   const valueLabel = formatMoney(prize.estimatedRetailValue, prize.currency);
   const faceLabel = faceLabelFrom(prize.title);
+
+  // This visitor just spun the winning entry. Checked before the paused branch
+  // below, because the same spin flips the campaign to winner_pending — without
+  // this order the person who may have won would be shown the notice written for
+  // everyone else.
+  if (win !== null) {
+    return (
+      <main>
+        <SiteHeader />
+        <div id="content">
+          <PotentialWinnerPanel
+            claimReference={win.reference}
+            claimDeadline={win.deadline}
+            prizeTitle={prize.title}
+            prizeValueCents={prize.estimatedRetailValue}
+          />
+        </div>
+        <SiteFooter />
+      </main>
+    );
+  }
+
+  // A paused campaign stays visible — a promotion that vanishes mid-flight looks
+  // exactly like a scam — but it must not show an armed deck. The balance and
+  // eligibility queries both return nothing outside `live`, and the deck falls
+  // back to the campaign's configured allocation, so leaving it mounted here
+  // advertises "10 of 10 free spins left today" on a campaign accepting none.
+  if (campaign.status === "winner_pending") {
+    return (
+      <main>
+        <SiteHeader />
+        <div id="content">
+          <CampaignPausedNotice />
+        </div>
+        <HowItWorks oddsDenominator={oddsDenominator} />
+        <PrizeAndSponsor />
+        <SiteFooter />
+      </main>
+    );
+  }
 
   return (
     <main>
@@ -111,6 +184,9 @@ export default function Home() {
                   columns={campaign.reelColumns}
                   oddsDenominator={oddsDenominator}
                   dailySpins={campaign.dailySpins}
+                  onWin={(reference) =>
+                    setWin({ reference, deadline: claimDeadlineLabel() })
+                  }
                 />
               </div>
             </div>
@@ -131,18 +207,20 @@ export default function Home() {
           {/* Compliance caption, where a broadcast promotion carries it */}
           <div className="bg-studio-900 px-4 py-2 sm:px-6">
             {/* Required near the game, and legible enough to actually be read —
-                a compliance line set at 11px is present without being visible. */}
+                a compliance line set at 11px is present without being visible.
+                Both sentences come from the campaign's own rules row, so the
+                published rules and this caption cannot drift. The seeded
+                statement already ends "…See Official Rules.", so the JSX adds a
+                link rather than repeating the phrase after it. */}
             <p className="mx-auto max-w-7xl text-[0.8rem] leading-relaxed text-caption">
-              {rules.noPurchaseStatement}
+              {rules.noPurchaseStatement} {rules.oddsStatement}{" "}
               <Link
                 href="/rules"
                 className="text-enamel underline decoration-enamel/40 hover:decoration-enamel"
               >
-                Official Rules
+                Read the Official Rules
               </Link>
-              . Stated odds of {formatOdds(oddsDenominator)} are based on the expected
-              number of eligible entries; actual odds depend on the total entries
-              received.
+              .
             </p>
           </div>
         </section>

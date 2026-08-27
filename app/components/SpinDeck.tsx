@@ -116,11 +116,20 @@ export function SpinDeck({
   columns,
   oddsDenominator,
   dailySpins,
+  onWin,
 }: {
   columns: number;
   oddsDenominator: number;
   /** Campaign-configured allocation, shown until the real balance loads. */
   dailySpins: number;
+  /**
+   * Called once the reels have settled on a potential win, with the claim
+   * reference the server issued. The deck cannot show the notice itself — it is a
+   * full-width printed panel, not a deck element — so the page swaps its content.
+   * The result is already immutable in the database by the time this fires; this
+   * only decides when the page catches up.
+   */
+  onWin: (claimReference: string) => void;
 }) {
   const reduced = usePrefersReducedMotion();
   const resetIn = useResetCountdown();
@@ -135,6 +144,7 @@ export function SpinDeck({
     isAuthenticated ? {} : "skip",
   );
   const executeSpin = useMutation(api.spins.spinExecute);
+  const acceptRules = useMutation(api.rules.acceptRules);
 
   // Allocated falls back to the campaign's configured count — while the query
   // is loading, and for a signed-out visitor who has not spun yet — rather than
@@ -150,10 +160,15 @@ export function SpinDeck({
   const [spinning, setSpinning] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [drums, setDrums] = useState<DrumState[]>(() => restingFaces(columns));
+  // Skip is only offered once a result exists to skip to. Before then there is
+  // nothing to land on, and skipping would replay the previous spin's outcome.
+  const [canSkip, setCanSkip] = useState(false);
 
   const timers = useRef<number[]>([]);
   const pendingResult = useRef<SymbolKey[] | null>(null);
   const pendingRemaining = useRef(dailySpins);
+  /** The server's claim reference when this spin is a potential win, else null. */
+  const pendingWin = useRef<string | null>(null);
 
   const clearTimers = () => {
     timers.current.forEach(window.clearTimeout);
@@ -171,11 +186,6 @@ export function SpinDeck({
     setAnnouncement("");
   }, [columns]);
 
-  const settle = useCallback((message: string) => {
-    setSpinning(false);
-    setAnnouncement(message);
-  }, []);
-
   const resultMessage = (symbols: SymbolKey[], left: number) => {
     const tail =
       left === 0
@@ -191,10 +201,34 @@ export function SpinDeck({
     return `${read}Not this time. ${tail}`;
   };
 
+  /**
+   * The end of a spin, whether the reels got there on their own or were skipped.
+   * The server already decided this; nothing here can change it.
+   */
+  const settleOutcome = useCallback(() => {
+    const symbols = pendingResult.current;
+    if (symbols === null) return;
+    setSpinning(false);
+    setCanSkip(false);
+
+    const reference = pendingWin.current;
+    if (reference !== null) {
+      // "May have won", never "won" — nothing has been awarded until the claim
+      // is verified. The full notice is the page's job; this is what a screen
+      // reader hears at the instant the reels stop.
+      setAnnouncement(
+        `You may have won. Your result is under review. Claim reference ${reference}.`,
+      );
+      onWin(reference);
+      return;
+    }
+    setAnnouncement(resultMessage(symbols, pendingRemaining.current));
+  }, [onWin]);
+
   /** Land every reel on the result immediately. The outcome does not change. */
   const skip = useCallback(() => {
     const result = pendingResult.current;
-    if (!result) return;
+    if (result === null) return;
     clearTimers();
     setDrums((prev) =>
       result.map((s, d) => ({
@@ -204,11 +238,17 @@ export function SpinDeck({
         flipId: (prev[d]?.flipId ?? 0) + 1,
       })),
     );
-    settle(resultMessage(result, pendingRemaining.current));
-  }, [settle]);
+    settleOutcome();
+  }, [settleOutcome]);
 
   const spin = async () => {
     if (spinning || remaining === 0) return;
+    // Cleared before the network wait, not after it: a Skip pressed while this
+    // request is in flight must have nothing to land on, rather than replaying
+    // the previous spin's symbols and count.
+    pendingResult.current = null;
+    pendingWin.current = null;
+    setCanSkip(false);
     setSpinning(true);
     setAnnouncement("Spinning.");
 
@@ -226,13 +266,18 @@ export function SpinDeck({
     }
 
     const symbols = result.symbols as SymbolKey[];
-    const left = result.remainingSpins;
     pendingResult.current = symbols;
-    pendingRemaining.current = left;
-    scheduleReveal(symbols, left);
+    pendingRemaining.current = result.remainingSpins;
+    // A win without a reference cannot open a claim, so it is not treated as one
+    // here; the spin row still records it and support can recover it.
+    pendingWin.current = result.isPotentialWinner
+      ? (result.claimReference ?? null)
+      : null;
+    setCanSkip(true);
+    scheduleReveal(symbols);
   };
 
-  const scheduleReveal = (symbols: SymbolKey[], left: number) => {
+  const scheduleReveal = (symbols: SymbolKey[]) => {
     const lastSettle = settleMs(columns - 1, columns);
 
     if (reduced) {
@@ -254,7 +299,7 @@ export function SpinDeck({
         );
       });
       timers.current.push(
-        window.setTimeout(() => settle(resultMessage(symbols, left)), lastSettle + 240),
+        window.setTimeout(settleOutcome, lastSettle + 240),
       );
       return;
     }
@@ -291,7 +336,7 @@ export function SpinDeck({
     });
 
     timers.current.push(
-      window.setTimeout(() => settle(resultMessage(symbols, left)), lastSettle + SETTLE_TAIL_MS),
+      window.setTimeout(settleOutcome, lastSettle + SETTLE_TAIL_MS),
     );
   };
 
@@ -340,7 +385,20 @@ export function SpinDeck({
             on the instinct the product must never monetise.
           */}
           {!rulesAccepted ? (
-            <RulesGate onAccept={() => setRulesAccepted(true)} />
+            <RulesGate
+              onAccept={async () => {
+                // The durable record first; the local flag only follows a
+                // committed `rulesAcceptances` row, so the deck never arms
+                // itself on an acceptance the server did not take.
+                try {
+                  await acceptRules({});
+                } catch (error) {
+                  return errorCopy(error);
+                }
+                setRulesAccepted(true);
+                return null;
+              }}
+            />
           ) : remaining === 0 && !spinning ? (
             <DeckNotice title="Out of spins today">
               Your {allocated} free spins come back
@@ -367,7 +425,7 @@ export function SpinDeck({
                 Spin now
               </button>
 
-              {spinning && (
+              {spinning && canSkip && (
                 <button
                   type="button"
                   onClick={skip}

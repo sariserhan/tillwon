@@ -243,14 +243,30 @@ export default async function RulesPage() {
 
       <section>
         <h2>If a potential winner is disqualified</h2>
+        {/*
+          This passage used to state the mechanism — "the sealed winning entry
+          number is left untouched, and the next entry to reach it wins" — which
+          the engine cannot deliver: by the time a claim exists the entry counter
+          has already passed the sealed target, so no later entry can reach it.
+          Publishing a mechanism the code does not implement is worse than
+          publishing the policy alone, so the policy stands and the mechanism is
+          withheld pending the resume implementation and legal review. Wording is
+          not final; it is listed under "Still required before launch" below.
+        */}
         <p>
           If a potential winner fails verification, does not meet the eligibility
           requirements, or does not complete their claim before the deadline, the
           prize is not awarded to them and{" "}
-          <strong>the campaign resumes</strong>. The sealed winning entry number is
-          left untouched, and the next entry to reach it wins. This is decided in
-          advance, on purpose: the outcome of a disqualification is not a judgement
-          made after the fact.
+          <strong>the campaign resumes</strong>. The prize stays available until a
+          valid winner is confirmed. That the campaign resumes is decided in
+          advance rather than case by case, and the resolution of every
+          disqualification is recorded in the campaign&rsquo;s audit trail.
+        </p>
+        <p>
+          How the winning entry is determined for a resumed campaign will be stated
+          here, and a cryptographic commitment to it published, before the campaign
+          accepts another entry. As with the original draw, nobody — including{" "}
+          {BRAND.name} staff — can select a winner.
         </p>
       </section>
 
@@ -286,8 +302,10 @@ export default async function RulesPage() {
           <br />
           Review by qualified counsel for every listed jurisdiction; the operating
           entity&rsquo;s legal name and address; a winners-list request address; the
-          administrator&rsquo;s identity; and any state registration or bonding that
-          applies to a future higher-value campaign.
+          administrator&rsquo;s identity; any state registration or bonding that
+          applies to a future higher-value campaign; and the exact wording and
+          mechanism for resuming a campaign after a disqualification, which is
+          stated as policy above but not yet implemented or approved.
         </p>
       </section>
     </DocumentShell>

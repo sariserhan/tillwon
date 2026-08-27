@@ -5,34 +5,47 @@ import { useId, useState } from "react";
 import { MINIMUM_AGE } from "@/convex/lib/jurisdictions.ts";
 
 /**
- * The rules-acceptance gate. Spec section 3 requires acceptance before a spin, and
- * there was no UI for it at all.
+ * The rules-acceptance gate. Spec section 3 requires acceptance before a spin.
  *
- * Acceptance is held in component state and NOT persisted. That is deliberate:
- * the durable record is a row in `rulesAcceptances` carrying the user, the campaign
- * and the exact rules version they agreed to, and writing a flag to localStorage
- * would create the appearance of a record that does not exist. Re-asking on reload
- * is the honest behaviour until the backend can store it.
+ * `onAccept` writes the durable record — a row in `rulesAcceptances` carrying the
+ * user, the campaign and the exact rules version agreed to. It resolves to null on
+ * success, or to a message to display; nothing local flips until the server has
+ * accepted, so this gate never claims a record that does not exist. Nothing is
+ * written to localStorage for the same reason: the server row is the truth, and
+ * re-asking on reload is the honest behaviour when it cannot be reached.
  *
  * One checkbox, three facts. Splitting age, residency and rules into separate
  * boxes reads as friction engineering; combining them into a single vague "I agree
  * to everything" hides what is being agreed. Naming all three in one sentence is
  * the middle that respects the reader.
  */
-export function RulesGate({ onAccept }: { onAccept: () => void }) {
+export function RulesGate({
+  onAccept,
+}: {
+  /** Resolves to null on success, or to the message to show the reader. */
+  onAccept: () => Promise<string | null>;
+}) {
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const id = useId();
   const errorId = `${id}-error`;
 
-  const confirm = () => {
+  const confirm = async () => {
     if (!checked) {
       // Names the problem and the recovery, rather than just refusing.
       setError("Tick the box to confirm you are eligible before your first spin.");
       return;
     }
     setError(null);
-    onAccept();
+    setSubmitting(true);
+    const message = await onAccept();
+    // On success this component is on its way out, so only failure needs to
+    // restore the control.
+    if (message !== null) {
+      setError(message);
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -74,8 +87,14 @@ export function RulesGate({ onAccept }: { onAccept: () => void }) {
       )}
 
       <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-2">
-        <button type="button" onClick={confirm} className="btn-primary">
-          Start spinning
+        <button
+          type="button"
+          onClick={confirm}
+          disabled={submitting}
+          aria-busy={submitting}
+          className="btn-primary"
+        >
+          {submitting ? "Recording…" : "Start spinning"}
         </button>
         <span className="text-xs text-caption">
           Free. Nothing to pay, ever.

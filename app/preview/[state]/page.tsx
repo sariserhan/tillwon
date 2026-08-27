@@ -54,9 +54,14 @@ export default async function PreviewPage({
 
       <main id="content" className="flex-1">
         {state === "potential-winner" ? (
+          /* Every value fabricated, matching the banner above. The panel takes
+             its prize from the caller rather than a shared constant, so the live
+             path passes real campaign data and this route passes obvious fakes. */
           <PotentialWinnerPanel
             claimReference="CLAIM-PREVIEW"
             claimDeadline="Not a real deadline"
+            prizeTitle="$100 gift card (example prize, not real)"
+            prizeValueCents={10_000}
           />
         ) : (
           <CampaignPausedNotice />

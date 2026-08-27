@@ -1,6 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { formatMoney } from "@/convex/lib/tiers.ts";
-import { CURRENT_CAMPAIGN } from "@/app/lib/currentCampaign.ts";
 
 /**
  * The two faces of a winner-pending campaign.
@@ -25,13 +27,30 @@ const REQUIREMENTS = [
 export function PotentialWinnerPanel({
   claimReference,
   claimDeadline,
+  prizeTitle,
+  prizeValueCents,
 }: {
   claimReference: string;
   /** Already formatted for display; the caller owns the timezone. */
   claimDeadline: string;
+  /**
+   * The prize the caller's own campaign data names, passed in rather than read
+   * from a shared constant. A stale title or value here would misdescribe the
+   * thing someone has just been told they may have won, at the one moment the
+   * product cannot afford to be approximately right.
+   */
+  prizeTitle: string;
+  /** Integer cents. Decides whether a W-9 is required. */
+  prizeValueCents: number;
 }) {
-  const value = formatMoney(CURRENT_CAMPAIGN.prizeValueCents);
-  const taxThresholdReached = CURRENT_CAMPAIGN.prizeValueCents >= 60_000;
+  const value = formatMoney(prizeValueCents);
+  const taxThresholdReached = prizeValueCents >= 60_000;
+
+  // This panel replaces the page's content in place, with no navigation, so
+  // nothing would otherwise tell a screen-reader user the outcome arrived. The
+  // deck's aria-live region unmounts with the deck.
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
 
   return (
     <section className="bg-studio-900 px-4 py-10 sm:px-6 sm:py-14">
@@ -40,8 +59,12 @@ export function PotentialWinnerPanel({
           Result under review
         </p>
 
-        <h1 className="font-display mt-6 text-[clamp(1.6rem,4.4vw,2.4rem)] uppercase leading-[1.02] text-ink">
-          You may have won the {CURRENT_CAMPAIGN.prizeTitle}
+        <h1
+          ref={heading}
+          tabIndex={-1}
+          className="font-display mt-6 text-[clamp(1.6rem,4.4vw,2.4rem)] uppercase leading-[1.02] text-ink outline-none"
+        >
+          You may have won the {prizeTitle}
         </h1>
         <p className="mt-3 max-w-[58ch] text-base leading-relaxed text-ink-soft sm:text-lg">
           Your result is being reviewed. Complete verification to confirm
@@ -165,11 +188,15 @@ export function CampaignPausedNotice() {
           A winning entry was drawn and is being verified. Spins are paused while
           that happens, and no prize has been awarded yet.
         </p>
+        {/* Deliberately does not name the mechanism. The engine cannot currently
+            resume on the original sealed target — the shard counter has already
+            passed it — so promising that here would be a claim the product
+            cannot keep. See the matching passage in the Official Rules. */}
         <p className="mt-3 max-w-[56ch] text-base leading-relaxed text-caption">
-          If verification is not completed, the prize is not awarded and the draw
-          resumes with the same sealed winning entry — the next entry to reach it
-          wins. That outcome was decided in advance and published in the Official
-          Rules, not chosen after the fact.
+          If verification is not completed, the prize is not awarded to that
+          entrant and the draw resumes. How it resumes is governed by the Official
+          Rules and recorded in the campaign&rsquo;s audit trail — nobody chooses a
+          winner after the fact.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
