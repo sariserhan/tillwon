@@ -23,3 +23,11 @@ export function drawLosingReels(
 export function drawWinningReels(columns: number): SymbolKey[] {
   return jackpotFor(columns);
 }
+
+/** Symbols each drum cycles through on its way to its result. Presentation only. */
+export function reelQueue(final: SymbolKey, steps: number): SymbolKey[] {
+  const queue: SymbolKey[] = [];
+  for (let i = 0; i < steps; i++) queue.push(SYMBOL_KEYS[i % SYMBOL_KEYS.length]);
+  queue.push(final);
+  return queue;
+}

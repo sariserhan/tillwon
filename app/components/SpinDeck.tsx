@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { FlapDrum } from "./FlapDrum";
 import { RulesGate } from "./RulesGate";
 import { SYMBOL_LABELS, type SymbolKey } from "@/convex/lib/symbols.ts";
-import { demoSpin, reelQueue } from "@/app/lib/demoSpin.ts";
+import { reelQueue } from "@/convex/lib/reels.ts";
 import { formatOdds } from "@/convex/lib/tiers.ts";
 import {
   FLAP_MS,
@@ -14,7 +16,23 @@ import {
   settleMs,
 } from "@/app/lib/reelTiming.ts";
 
-const DAILY_SPINS = 10;
+/** Typed codes to fixed copy, so one failure never gets two explanations. */
+function errorCopy(error: unknown): string {
+  const code = error instanceof Error ? error.message : "";
+  if (code.includes("NO_SPINS_REMAINING")) return "You've used all your spins today.";
+  if (code.includes("CAMPAIGN_NOT_LIVE"))
+    return "This jackpot has a potential winner under review. The campaign is paused while we verify.";
+  if (code.includes("RULES_NOT_ACCEPTED"))
+    return "Read and accept the Official Rules to start spinning.";
+  if (code.includes("INELIGIBLE_REGION"))
+    return "This campaign isn't open in your region yet. See Official Rules for eligibility.";
+  if (code.includes("UNDERAGE")) return "You must be 18 or older to enter.";
+  if (code.includes("EMAIL_UNVERIFIED")) return "Verify your email to start spinning.";
+  if (code.includes("ACCOUNT_RESTRICTED"))
+    return "Your account is under review. Contact support.";
+  if (code.includes("NOT_AUTHENTICATED")) return "Sign in to start spinning.";
+  return "Something went wrong. Your spins are safe — try again.";
+}
 
 /** flipId increments per flip so FlapDrum can remount its animated nodes. */
 type DrumState = {
@@ -97,23 +115,45 @@ function restingFaces(columns: number): DrumState[] {
 export function SpinDeck({
   columns,
   oddsDenominator,
+  dailySpins,
 }: {
   columns: number;
   oddsDenominator: number;
+  /** Campaign-configured allocation, shown until the real balance loads. */
+  dailySpins: number;
 }) {
   const reduced = usePrefersReducedMotion();
   const resetIn = useResetCountdown();
 
+  // Skipped while signed out: the balance query requires a user and would
+  // otherwise throw NOT_AUTHENTICATED on every anonymous page view. Spinning
+  // while signed out still fails, with a clear "sign in" message, on the spin
+  // attempt itself rather than a crash on load.
+  const { isAuthenticated } = useConvexAuth();
+  const balance = useQuery(
+    api.balances.getDailySpinBalance,
+    isAuthenticated ? {} : "skip",
+  );
+  const executeSpin = useMutation(api.spins.spinExecute);
+
+  // Allocated falls back to the campaign's configured count — while the query
+  // is loading, and for a signed-out visitor who has not spun yet — rather than
+  // the fixed 10 this deck used to assume.
+  const allocated = balance?.allocated ?? dailySpins;
+  // Optimistic before the balance is known: 0 here would show "out of spins"
+  // to a fresh or signed-out visitor who has never spun. The server is the
+  // real gate regardless of what this shows.
+  const remaining = balance?.remaining ?? allocated;
+
   // Not persisted on purpose — see RulesGate. The durable record is server-side.
   const [rulesAccepted, setRulesAccepted] = useState(false);
-  const [remaining, setRemaining] = useState(DAILY_SPINS);
   const [spinning, setSpinning] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [drums, setDrums] = useState<DrumState[]>(() => restingFaces(columns));
 
   const timers = useRef<number[]>([]);
   const pendingResult = useRef<SymbolKey[] | null>(null);
-  const pendingRemaining = useRef(DAILY_SPINS);
+  const pendingRemaining = useRef(dailySpins);
 
   const clearTimers = () => {
     timers.current.forEach(window.clearTimeout);
@@ -167,18 +207,32 @@ export function SpinDeck({
     settle(resultMessage(result, pendingRemaining.current));
   }, [settle]);
 
-  const spin = () => {
+  const spin = async () => {
     if (spinning || remaining === 0) return;
-
-    const { symbols } = demoSpin(columns);
-    const left = remaining - 1;
-    pendingResult.current = symbols;
-    pendingRemaining.current = left;
-
-    setRemaining(left);
     setSpinning(true);
     setAnnouncement("Spinning.");
 
+    let result;
+    try {
+      result = await executeSpin({
+        // A fresh key per attempt; a retry of the SAME attempt must reuse it.
+        idempotencyKey: crypto.randomUUID(),
+        deviceHash: "browser",
+      });
+    } catch (error) {
+      setSpinning(false);
+      setAnnouncement(errorCopy(error));
+      return;
+    }
+
+    const symbols = result.symbols as SymbolKey[];
+    const left = result.remainingSpins;
+    pendingResult.current = symbols;
+    pendingRemaining.current = left;
+    scheduleReveal(symbols, left);
+  };
+
+  const scheduleReveal = (symbols: SymbolKey[], left: number) => {
     const lastSettle = settleMs(columns - 1, columns);
 
     if (reduced) {
@@ -289,7 +343,7 @@ export function SpinDeck({
             <RulesGate onAccept={() => setRulesAccepted(true)} />
           ) : remaining === 0 && !spinning ? (
             <DeckNotice title="Out of spins today">
-              Your {DAILY_SPINS} free spins come back
+              Your {allocated} free spins come back
               {resetIn ? ` in ${resetIn}` : " at the daily reset"}. There is no way
               to get more before then, and nothing to buy — that is the whole point.{" "}
               <Link
@@ -328,7 +382,7 @@ export function SpinDeck({
           {/* Spent ticks are hollow as well as dimmed — never colour alone. */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1" aria-hidden="true">
-              {Array.from({ length: DAILY_SPINS }, (_, i) => (
+              {Array.from({ length: allocated }, (_, i) => (
                 <span
                   key={i}
                   className={
@@ -341,7 +395,7 @@ export function SpinDeck({
             </div>
             <p className="text-sm text-caption">
               <span className="text-enamel">
-                {remaining} of {DAILY_SPINS} free spins left today
+                {remaining} of {allocated} free spins left today
               </span>
               {/* Suppressed at zero: DeckNotice already carries the reset time,
                   and two copies read as a system unsure what it is telling you. */}

@@ -3,6 +3,7 @@ import { Archivo, Public_Sans } from "next/font/google";
 import "./globals.css";
 import { BRAND } from "@/app/lib/brand.ts";
 import { SITE_DESCRIPTION, SITE_URL } from "@/app/lib/site.ts";
+import { Providers } from "./providers";
 
 // Archivo carries a width axis; the broadcast titling voice lives at its
 // expanded end. Public Sans is the civic register — a public draw, in the
@@ -84,7 +85,7 @@ export default function RootLayout({
             contract would exist only in source maps. This renders it into the
             markup itself, where a build can be audited against it. */}
         <div hidden dangerouslySetInnerHTML={{ __html: DIRECTION_CONTRACT }} />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

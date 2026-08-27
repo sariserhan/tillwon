@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { fetchQuery } from "convex/nextjs";
+import { api } from "@/convex/_generated/api";
 import { DocumentShell } from "@/app/components/DocumentShell";
 import { TIERS, formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
 import { BRAND } from "@/app/lib/brand.ts";
@@ -9,11 +11,6 @@ import {
   MINIMUM_AGE,
   registrationDuty,
 } from "@/convex/lib/jurisdictions.ts";
-import {
-  CURRENT_CAMPAIGN,
-  CURRENT_ODDS,
-  CURRENT_TIER,
-} from "@/app/lib/currentCampaign.ts";
 
 export const metadata: Metadata = {
   title: `Official Rules — ${BRAND.name}`,
@@ -21,14 +18,37 @@ export const metadata: Metadata = {
     "Eligibility, how entries work, how the winner is determined, and how a prize is claimed. No purchase necessary.",
 };
 
-const value = formatMoney(CURRENT_CAMPAIGN.prizeValueCents);
-const duty = registrationDuty(CURRENT_CAMPAIGN.prizeValueCents);
+/**
+ * Reads the same live-or-winner-pending campaign as the home page
+ * (api.campaigns.getActiveCampaign), server-side, so the published odds and
+ * eligibility here can never drift from what the spin surface shows.
+ */
+export default async function RulesPage() {
+  const active = await fetchQuery(api.campaigns.getActiveCampaign, {});
+  if (active === null) {
+    return (
+      <DocumentShell
+        title="Official Rules"
+        standfirst="No draw is live right now."
+        draftNotice="These rules publish once a campaign is live."
+      >
+        <p>Check back once the next sponsored prize opens for entries.</p>
+      </DocumentShell>
+    );
+  }
 
-export default function RulesPage() {
+  const { campaign, sponsor, prize, oddsDenominator, tier: currentTier } = active;
+  const value = formatMoney(prize.estimatedRetailValue, prize.currency);
+  const duty = registrationDuty(prize.estimatedRetailValue);
+  // No campaign field for this yet — convex/spins.ts hardcodes the same
+  // 14-day claim window when it opens a claim, so this mirrors that constant
+  // rather than inventing a schema value nothing else reads.
+  const claimDeadlineDays = 14;
+
   return (
     <DocumentShell
       title="Official Rules"
-      standfirst={`Current campaign: the ${CURRENT_CAMPAIGN.prizeTitle}. Free to enter, ${CURRENT_CAMPAIGN.dailySpins} spins a day, and the prize stays live until a valid winner is confirmed.`}
+      standfirst={`Current campaign: the ${prize.title}. Free to enter, ${campaign.dailySpins} spins a day, and the prize stays live until a valid winner is confirmed.`}
       draftNotice="These rules were drafted alongside the product and have not been reviewed by qualified counsel. They must be reviewed, and any required state registration completed, before a campaign accepts real entries."
     >
       <section>
@@ -76,12 +96,12 @@ export default function RulesPage() {
         <h2>How to enter</h2>
         <p>
           Create a free account and verify your email address. Each eligible
-          entrant receives {CURRENT_CAMPAIGN.dailySpins} free spins per calendar
+          entrant receives {campaign.dailySpins} free spins per calendar
           day. Each spin is one entry.
         </p>
         <p>
-          Spins reset daily at {String(CURRENT_CAMPAIGN.resetHour).padStart(2, "0")}
-          :00 {CURRENT_CAMPAIGN.resetTimezone}. The reset time is the same for every
+          Spins reset daily at {String(campaign.resetHour).padStart(2, "0")}
+          :00 {campaign.resetTimezone}. The reset time is the same for every
           entrant regardless of where they are, and the site shows you the next
           reset in your own local time. Unused spins expire at the reset and do not
           accumulate.
@@ -116,7 +136,7 @@ export default function RulesPage() {
         <h2>Odds of winning</h2>
         <p>
           For this campaign, the stated odds are{" "}
-          <strong>{formatOdds(CURRENT_ODDS)}</strong> per entry. Stated odds are
+          <strong>{formatOdds(oddsDenominator)}</strong> per entry. Stated odds are
           based on the expected number of eligible entries; actual odds depend on
           the total number of eligible entries received.
         </p>
@@ -125,11 +145,11 @@ export default function RulesPage() {
           machine has. A larger prize is a longer machine and longer odds:
         </p>
         <ul>
-          {TIERS.map((tier) => (
-            <li key={tier.tier}>
-              {tier.label} — {tier.columns} reels,{" "}
-              {formatOdds(Math.pow(10, tier.columns))}
-              {tier.tier === CURRENT_TIER.tier ? " (this campaign)" : ""}
+          {TIERS.map((t) => (
+            <li key={t.tier}>
+              {t.label} — {t.columns} reels,{" "}
+              {formatOdds(Math.pow(10, t.columns))}
+              {t.tier === currentTier.tier ? " (this campaign)" : ""}
             </li>
           ))}
         </ul>
@@ -141,7 +161,7 @@ export default function RulesPage() {
           A winning result does not mean you have won. It means you are a potential
           winner, and the campaign is paused for verification. You will be told on
           screen and by email, and you will receive a claim reference and a
-          deadline of {CURRENT_CAMPAIGN.claimDeadlineDays} days to begin your claim.
+          deadline of {claimDeadlineDays} days to begin your claim.
           Failing to begin a claim before the deadline forfeits the prize.
         </p>
         <p>To confirm a claim you must provide:</p>
@@ -246,7 +266,7 @@ export default function RulesPage() {
       <section>
         <h2>Sponsor</h2>
         <p>
-          This campaign is provided by {CURRENT_CAMPAIGN.sponsorName}. A sponsor
+          This campaign is provided by {sponsor.name}. A sponsor
           funds or supplies the prize and receives advertising exposure. A sponsor
           cannot select the winner, change the odds, alter these rules after launch,
           or access entrant personal data. See the{" "}
