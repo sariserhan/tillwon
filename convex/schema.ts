@@ -151,4 +151,70 @@ export default defineSchema({
     allocated: v.number(),
     used: v.number(),
   }).index("by_user_campaign_date", ["userId", "campaignId", "resetDate"]),
+
+  /**
+   * Isolated so that NO query function anywhere returns it. The commitment hash
+   * on the campaign — not encryption — is what makes the target tamper-evident,
+   * because it defends against a privileged insider changing the target after
+   * watching traffic rather than against someone reading the database.
+   */
+  campaignSecrets: defineTable({
+    campaignId: v.id("campaigns"),
+    winningShard: v.number(),
+    winningCount: v.number(),
+    nonce: v.string(),
+  }).index("by_campaign", ["campaignId"]),
+
+  spinShards: defineTable({
+    campaignId: v.id("campaigns"),
+    shard: v.number(),
+    count: v.number(),
+  }).index("by_campaign_shard", ["campaignId", "shard"]),
+
+  spins: defineTable({
+    userId: v.id("users"),
+    campaignId: v.id("campaigns"),
+    idempotencyKey: v.string(),
+    shard: v.number(),
+    shardSequence: v.number(),
+    symbols: v.array(v.string()),
+    isPotentialWinner: v.boolean(),
+    isValid: v.boolean(),
+    invalidReason: v.optional(v.string()),
+    riskScore: v.number(),
+    riskFlags: v.array(v.string()),
+    ipHash: v.string(),
+    deviceHash: v.string(),
+    engineVersion: v.string(),
+    rulesVersion: v.number(),
+  })
+    .index("by_user_idempotency", ["userId", "idempotencyKey"])
+    .index("by_user_campaign", ["userId", "campaignId"])
+    .index("by_campaign_winner", ["campaignId", "isPotentialWinner"]),
+
+  claims: defineTable({
+    campaignId: v.id("campaigns"),
+    spinId: v.id("spins"),
+    userId: v.id("users"),
+    claimReference: v.string(),
+    status: v.union(
+      v.literal("potential_winner"),
+      v.literal("notification_sent"),
+      v.literal("claim_started"),
+      v.literal("documents_requested"),
+      v.literal("under_review"),
+      v.literal("more_info_required"),
+      v.literal("approved"),
+      v.literal("disqualified"),
+      v.literal("prize_processing"),
+      v.literal("prize_shipped"),
+      v.literal("prize_delivered"),
+      v.literal("completed"),
+    ),
+    claimDeadline: v.number(),
+    publicityReleaseAcceptedAt: v.optional(v.number()),
+  })
+    .index("by_reference", ["claimReference"])
+    .index("by_user", ["userId"])
+    .index("by_campaign", ["campaignId"]),
 });
