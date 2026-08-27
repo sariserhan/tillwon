@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DocumentShell } from "@/app/components/DocumentShell";
 import { CURRENT_CAMPAIGN } from "@/app/lib/currentCampaign.ts";
-import { formatMoney } from "@/app/lib/tiers.ts";
+import { formatMoney } from "@/convex/lib/tiers.ts";
 import { BRAND } from "@/app/lib/brand.ts";
 
 /**

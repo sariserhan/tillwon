@@ -1,4 +1,4 @@
-import { resolveTier, defaultOddsDenominator } from "@/app/lib/tiers.ts";
+import { resolveTier, defaultOddsDenominator } from "@/convex/lib/tiers.ts";
 import { BRAND } from "@/app/lib/brand.ts";
 
 /**

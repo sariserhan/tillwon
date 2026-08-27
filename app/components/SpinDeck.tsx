@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { FlapDrum } from "./FlapDrum";
 import { RulesGate } from "./RulesGate";
-import { SYMBOL_LABELS, type SymbolKey } from "@/app/lib/symbols.ts";
-import { demoSpin, reelQueue } from "@/app/lib/demoSpin.ts";
-import { formatOdds } from "@/app/lib/tiers.ts";
+import { SYMBOL_LABELS, type SymbolKey } from "@/convex/lib/symbols.ts";
+import { reelQueue } from "@/convex/lib/reels.ts";
+import { formatOdds } from "@/convex/lib/tiers.ts";
 import {
   FLAP_MS,
   SETTLE_TAIL_MS,
@@ -14,7 +16,23 @@ import {
   settleMs,
 } from "@/app/lib/reelTiming.ts";
 
-const DAILY_SPINS = 10;
+/** Typed codes to fixed copy, so one failure never gets two explanations. */
+function errorCopy(error: unknown): string {
+  const code = error instanceof Error ? error.message : "";
+  if (code.includes("NO_SPINS_REMAINING")) return "You've used all your spins today.";
+  if (code.includes("CAMPAIGN_NOT_LIVE"))
+    return "This jackpot has a potential winner under review. The campaign is paused while we verify.";
+  if (code.includes("RULES_NOT_ACCEPTED"))
+    return "Read and accept the Official Rules to start spinning.";
+  if (code.includes("INELIGIBLE_REGION"))
+    return "This campaign isn't open in your region yet. See Official Rules for eligibility.";
+  if (code.includes("UNDERAGE")) return "You must be 18 or older to enter.";
+  if (code.includes("EMAIL_UNVERIFIED")) return "Verify your email to start spinning.";
+  if (code.includes("ACCOUNT_RESTRICTED"))
+    return "Your account is under review. Contact support.";
+  if (code.includes("NOT_AUTHENTICATED")) return "Sign in to start spinning.";
+  return "Something went wrong. Your spins are safe — try again.";
+}
 
 /** flipId increments per flip so FlapDrum can remount its animated nodes. */
 type DrumState = {
@@ -97,23 +115,87 @@ function restingFaces(columns: number): DrumState[] {
 export function SpinDeck({
   columns,
   oddsDenominator,
+  dailySpins,
+  onWin,
 }: {
   columns: number;
   oddsDenominator: number;
+  /** Campaign-configured allocation, shown until the real balance loads. */
+  dailySpins: number;
+  /**
+   * A potential win, reported twice: once with `revealed: false` in the same
+   * microtask the spin mutation resolves, and again with `revealed: true` once
+   * the reels have settled on it.
+   *
+   * The early call is not cosmetic — it closes a race. The same mutation that
+   * returns the win also flips the campaign to `winner_pending`, and the page's
+   * reactive `getActiveCampaign` subscription lands well inside this deck's
+   * ~2.8s reveal. If the page took its paused branch on that update it would
+   * unmount this deck, whose unmount cleanup clears every reveal timer —
+   * including the one that reports the settled win — and the actual winner would
+   * be left looking at the notice written for everyone else, with no surface
+   * anywhere showing their claim reference. Telling the page a win is in flight
+   * before the animation starts keeps the deck mounted through the reveal.
+   *
+   * Two invariants make that safe, and neither is about call order — the
+   * campaign's setState actually runs FIRST, synchronously in the WebSocket
+   * message handler, with this call following in a promise continuation:
+   *
+   * 1. `win` and the `getActiveCampaign` subscription are both `useState` on the
+   *    same fiber (`Home`) at the same lane, so they always land in the same
+   *    commit. No render can see the paused campaign without also seeing `win`.
+   *    Splitting `Home`'s `useQuery` into a child component, or a Convex version
+   *    that drives subscriptions through `useSyncExternalStore` instead, would
+   *    break this — that is the thing to re-check, not the ordering.
+   * 2. This fires from a promise continuation, not a cancellable timer, so the
+   *    signal reaches `Home`'s stable `setWin` even if the deck were unmounted
+   *    first. That is precisely what the settled call cannot do, and why the win
+   *    has to be reported twice.
+   *
+   * The deck cannot show the notice itself: it is a full-width printed panel,
+   * not a deck element. The result is already immutable in the database by the
+   * time either call fires; these only decide when the page catches up.
+   */
+  onWin: (claimReference: string, revealed: boolean) => void;
 }) {
   const reduced = usePrefersReducedMotion();
   const resetIn = useResetCountdown();
 
+  // Skipped while signed out: the balance query requires a user and would
+  // otherwise throw NOT_AUTHENTICATED on every anonymous page view. Spinning
+  // while signed out still fails, with a clear "sign in" message, on the spin
+  // attempt itself rather than a crash on load.
+  const { isAuthenticated } = useConvexAuth();
+  const balance = useQuery(
+    api.balances.getDailySpinBalance,
+    isAuthenticated ? {} : "skip",
+  );
+  const executeSpin = useMutation(api.spins.spinExecute);
+  const acceptRules = useMutation(api.rules.acceptRules);
+
+  // Allocated falls back to the campaign's configured count — while the query
+  // is loading, and for a signed-out visitor who has not spun yet — rather than
+  // the fixed 10 this deck used to assume.
+  const allocated = balance?.allocated ?? dailySpins;
+  // Optimistic before the balance is known: 0 here would show "out of spins"
+  // to a fresh or signed-out visitor who has never spun. The server is the
+  // real gate regardless of what this shows.
+  const remaining = balance?.remaining ?? allocated;
+
   // Not persisted on purpose — see RulesGate. The durable record is server-side.
   const [rulesAccepted, setRulesAccepted] = useState(false);
-  const [remaining, setRemaining] = useState(DAILY_SPINS);
   const [spinning, setSpinning] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [drums, setDrums] = useState<DrumState[]>(() => restingFaces(columns));
+  // Skip is only offered once a result exists to skip to. Before then there is
+  // nothing to land on, and skipping would replay the previous spin's outcome.
+  const [canSkip, setCanSkip] = useState(false);
 
   const timers = useRef<number[]>([]);
   const pendingResult = useRef<SymbolKey[] | null>(null);
-  const pendingRemaining = useRef(DAILY_SPINS);
+  const pendingRemaining = useRef(dailySpins);
+  /** The server's claim reference when this spin is a potential win, else null. */
+  const pendingWin = useRef<string | null>(null);
 
   const clearTimers = () => {
     timers.current.forEach(window.clearTimeout);
@@ -131,11 +213,6 @@ export function SpinDeck({
     setAnnouncement("");
   }, [columns]);
 
-  const settle = useCallback((message: string) => {
-    setSpinning(false);
-    setAnnouncement(message);
-  }, []);
-
   const resultMessage = (symbols: SymbolKey[], left: number) => {
     const tail =
       left === 0
@@ -151,10 +228,36 @@ export function SpinDeck({
     return `${read}Not this time. ${tail}`;
   };
 
+  /**
+   * The end of a spin, whether the reels got there on their own or were skipped.
+   * The server already decided this; nothing here can change it.
+   */
+  const settleOutcome = useCallback(() => {
+    const symbols = pendingResult.current;
+    if (symbols === null) return;
+    setSpinning(false);
+    setCanSkip(false);
+
+    const reference = pendingWin.current;
+    if (reference !== null) {
+      // "May have won", never "won" — nothing has been awarded until the claim
+      // is verified. Mostly a fallback: `onWin` below batches with this, so the
+      // page swaps to PotentialWinnerPanel and its focused <h1> — not this text
+      // — is what a screen reader announces. This still has to say the honest
+      // thing, because it renders if the swap does not.
+      setAnnouncement(
+        `You may have won. Your result is under review. Claim reference ${reference}.`,
+      );
+      onWin(reference, true);
+      return;
+    }
+    setAnnouncement(resultMessage(symbols, pendingRemaining.current));
+  }, [onWin]);
+
   /** Land every reel on the result immediately. The outcome does not change. */
   const skip = useCallback(() => {
     const result = pendingResult.current;
-    if (!result) return;
+    if (result === null) return;
     clearTimers();
     setDrums((prev) =>
       result.map((s, d) => ({
@@ -164,21 +267,54 @@ export function SpinDeck({
         flipId: (prev[d]?.flipId ?? 0) + 1,
       })),
     );
-    settle(resultMessage(result, pendingRemaining.current));
-  }, [settle]);
+    settleOutcome();
+  }, [settleOutcome]);
 
-  const spin = () => {
+  const spin = async () => {
     if (spinning || remaining === 0) return;
-
-    const { symbols } = demoSpin(columns);
-    const left = remaining - 1;
-    pendingResult.current = symbols;
-    pendingRemaining.current = left;
-
-    setRemaining(left);
+    // Cleared before the network wait, not after it: a Skip pressed while this
+    // request is in flight must have nothing to land on, rather than replaying
+    // the previous spin's symbols and count.
+    pendingResult.current = null;
+    pendingWin.current = null;
+    setCanSkip(false);
     setSpinning(true);
     setAnnouncement("Spinning.");
 
+    let result;
+    try {
+      result = await executeSpin({
+        // A fresh key per attempt; a retry of the SAME attempt must reuse it.
+        idempotencyKey: crypto.randomUUID(),
+        deviceHash: "browser",
+      });
+    } catch (error) {
+      setSpinning(false);
+      setAnnouncement(errorCopy(error));
+      return;
+    }
+
+    const symbols = result.symbols as SymbolKey[];
+    pendingResult.current = symbols;
+    pendingRemaining.current = result.remainingSpins;
+    // A win without a reference cannot open a claim, so it is not treated as one
+    // here; the spin row still records it and support can recover it.
+    pendingWin.current = result.isPotentialWinner
+      ? (result.claimReference ?? null)
+      : null;
+
+    // Before scheduleReveal, in the microtask that resolved the mutation: the
+    // campaign is already `winner_pending` server-side, and the page must know a
+    // win is in flight here before its own subscription tells it the campaign
+    // paused. See the onWin doc comment — a timer cannot carry this, because
+    // losing the race unmounts the deck and cancels the timer.
+    if (pendingWin.current !== null) onWin(pendingWin.current, false);
+
+    setCanSkip(true);
+    scheduleReveal(symbols);
+  };
+
+  const scheduleReveal = (symbols: SymbolKey[]) => {
     const lastSettle = settleMs(columns - 1, columns);
 
     if (reduced) {
@@ -200,7 +336,7 @@ export function SpinDeck({
         );
       });
       timers.current.push(
-        window.setTimeout(() => settle(resultMessage(symbols, left)), lastSettle + 240),
+        window.setTimeout(settleOutcome, lastSettle + 240),
       );
       return;
     }
@@ -237,7 +373,7 @@ export function SpinDeck({
     });
 
     timers.current.push(
-      window.setTimeout(() => settle(resultMessage(symbols, left)), lastSettle + SETTLE_TAIL_MS),
+      window.setTimeout(settleOutcome, lastSettle + SETTLE_TAIL_MS),
     );
   };
 
@@ -286,10 +422,23 @@ export function SpinDeck({
             on the instinct the product must never monetise.
           */}
           {!rulesAccepted ? (
-            <RulesGate onAccept={() => setRulesAccepted(true)} />
+            <RulesGate
+              onAccept={async () => {
+                // The durable record first; the local flag only follows a
+                // committed `rulesAcceptances` row, so the deck never arms
+                // itself on an acceptance the server did not take.
+                try {
+                  await acceptRules({});
+                } catch (error) {
+                  return errorCopy(error);
+                }
+                setRulesAccepted(true);
+                return null;
+              }}
+            />
           ) : remaining === 0 && !spinning ? (
             <DeckNotice title="Out of spins today">
-              Your {DAILY_SPINS} free spins come back
+              Your {allocated} free spins come back
               {resetIn ? ` in ${resetIn}` : " at the daily reset"}. There is no way
               to get more before then, and nothing to buy — that is the whole point.{" "}
               <Link
@@ -313,7 +462,7 @@ export function SpinDeck({
                 Spin now
               </button>
 
-              {spinning && (
+              {spinning && canSkip && (
                 <button
                   type="button"
                   onClick={skip}
@@ -328,7 +477,7 @@ export function SpinDeck({
           {/* Spent ticks are hollow as well as dimmed — never colour alone. */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-1" aria-hidden="true">
-              {Array.from({ length: DAILY_SPINS }, (_, i) => (
+              {Array.from({ length: allocated }, (_, i) => (
                 <span
                   key={i}
                   className={
@@ -341,7 +490,7 @@ export function SpinDeck({
             </div>
             <p className="text-sm text-caption">
               <span className="text-enamel">
-                {remaining} of {DAILY_SPINS} free spins left today
+                {remaining} of {allocated} free spins left today
               </span>
               {/* Suppressed at zero: DeckNotice already carries the reset time,
                   and two copies read as a system unsure what it is telling you. */}

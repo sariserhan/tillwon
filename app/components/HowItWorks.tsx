@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { formatOdds } from "@/app/lib/tiers.ts";
-import { MINIMUM_AGE } from "@/app/lib/jurisdictions.ts";
+import { formatOdds } from "@/convex/lib/tiers.ts";
+import { MINIMUM_AGE } from "@/convex/lib/jurisdictions.ts";
 import { BRAND } from "@/app/lib/brand.ts";
 
 /**

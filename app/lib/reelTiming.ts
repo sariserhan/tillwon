@@ -2,8 +2,11 @@
  * Reel animation timing. Pure functions, extracted from the component so the
  * numbers behind the signature interaction can be asserted rather than trusted.
  *
- * The spec budgets 2.5–4s for a spin. `npm run check:spin` proves this stays
- * inside that window at every reel count from 3 to 8.
+ * The spec budgets 2.5–4s for a spin. `spinDurationMs` is the number to check
+ * that against: it is 2.78s at every reel count from 3 to 8, since the spread
+ * between the first and last reel is fixed rather than per-reel. (The standalone
+ * `npm run check:spin` script that used to assert this was deleted with the demo
+ * stub; nothing asserts it now.)
  */
 
 /** First reel settles here; the last lands SETTLE_SPREAD_MS later, whatever the count. */

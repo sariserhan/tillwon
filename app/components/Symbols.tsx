@@ -1,11 +1,11 @@
-import { type SymbolKey } from "@/app/lib/symbols.ts";
+import { type SymbolKey } from "@/convex/lib/symbols.ts";
 
 export {
   SYMBOL_KEYS,
   SYMBOL_LABELS,
   isJackpot,
   type SymbolKey,
-} from "@/app/lib/symbols.ts";
+} from "@/convex/lib/symbols.ts";
 
 /**
  * Reel symbols, drawn as one family: 24×24 grid, solid fills in currentColor,

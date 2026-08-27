@@ -1,19 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { fetchQuery } from "convex/nextjs";
+import { api } from "@/convex/_generated/api";
 import { DocumentShell } from "@/app/components/DocumentShell";
-import { TIERS, formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { TIERS, formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
 import { BRAND } from "@/app/lib/brand.ts";
 import {
   ELIGIBLE_JURISDICTIONS,
   EXCLUSIONS,
   MINIMUM_AGE,
   registrationDuty,
-} from "@/app/lib/jurisdictions.ts";
-import {
-  CURRENT_CAMPAIGN,
-  CURRENT_ODDS,
-  CURRENT_TIER,
-} from "@/app/lib/currentCampaign.ts";
+} from "@/convex/lib/jurisdictions.ts";
 
 export const metadata: Metadata = {
   title: `Official Rules — ${BRAND.name}`,
@@ -21,14 +18,37 @@ export const metadata: Metadata = {
     "Eligibility, how entries work, how the winner is determined, and how a prize is claimed. No purchase necessary.",
 };
 
-const value = formatMoney(CURRENT_CAMPAIGN.prizeValueCents);
-const duty = registrationDuty(CURRENT_CAMPAIGN.prizeValueCents);
+/**
+ * Reads the same live-or-winner-pending campaign as the home page
+ * (api.campaigns.getActiveCampaign), server-side, so the published odds and
+ * eligibility here can never drift from what the spin surface shows.
+ */
+export default async function RulesPage() {
+  const active = await fetchQuery(api.campaigns.getActiveCampaign, {});
+  if (active === null) {
+    return (
+      <DocumentShell
+        title="Official Rules"
+        standfirst="No draw is live right now."
+        draftNotice="These rules publish once a campaign is live."
+      >
+        <p>Check back once the next sponsored prize opens for entries.</p>
+      </DocumentShell>
+    );
+  }
 
-export default function RulesPage() {
+  const { campaign, sponsor, prize, oddsDenominator, tier: currentTier } = active;
+  const value = formatMoney(prize.estimatedRetailValue, prize.currency);
+  const duty = registrationDuty(prize.estimatedRetailValue);
+  // No campaign field for this yet — convex/spins.ts hardcodes the same
+  // 14-day claim window when it opens a claim, so this mirrors that constant
+  // rather than inventing a schema value nothing else reads.
+  const claimDeadlineDays = 14;
+
   return (
     <DocumentShell
       title="Official Rules"
-      standfirst={`Current campaign: the ${CURRENT_CAMPAIGN.prizeTitle}. Free to enter, ${CURRENT_CAMPAIGN.dailySpins} spins a day, and the prize stays live until a valid winner is confirmed.`}
+      standfirst={`Current campaign: the ${prize.title}. Free to enter, ${campaign.dailySpins} spins a day, and the prize stays live until a valid winner is confirmed.`}
       draftNotice="These rules were drafted alongside the product and have not been reviewed by qualified counsel. They must be reviewed, and any required state registration completed, before a campaign accepts real entries."
     >
       <section>
@@ -76,12 +96,12 @@ export default function RulesPage() {
         <h2>How to enter</h2>
         <p>
           Create a free account and verify your email address. Each eligible
-          entrant receives {CURRENT_CAMPAIGN.dailySpins} free spins per calendar
+          entrant receives {campaign.dailySpins} free spins per calendar
           day. Each spin is one entry.
         </p>
         <p>
-          Spins reset daily at {String(CURRENT_CAMPAIGN.resetHour).padStart(2, "0")}
-          :00 {CURRENT_CAMPAIGN.resetTimezone}. The reset time is the same for every
+          Spins reset daily at {String(campaign.resetHour).padStart(2, "0")}
+          :00 {campaign.resetTimezone}. The reset time is the same for every
           entrant regardless of where they are, and the site shows you the next
           reset in your own local time. Unused spins expire at the reset and do not
           accumulate.
@@ -116,7 +136,7 @@ export default function RulesPage() {
         <h2>Odds of winning</h2>
         <p>
           For this campaign, the stated odds are{" "}
-          <strong>{formatOdds(CURRENT_ODDS)}</strong> per entry. Stated odds are
+          <strong>{formatOdds(oddsDenominator)}</strong> per entry. Stated odds are
           based on the expected number of eligible entries; actual odds depend on
           the total number of eligible entries received.
         </p>
@@ -125,11 +145,11 @@ export default function RulesPage() {
           machine has. A larger prize is a longer machine and longer odds:
         </p>
         <ul>
-          {TIERS.map((tier) => (
-            <li key={tier.tier}>
-              {tier.label} — {tier.columns} reels,{" "}
-              {formatOdds(Math.pow(10, tier.columns))}
-              {tier.tier === CURRENT_TIER.tier ? " (this campaign)" : ""}
+          {TIERS.map((t) => (
+            <li key={t.tier}>
+              {t.label} — {t.columns} reels,{" "}
+              {formatOdds(Math.pow(10, t.columns))}
+              {t.tier === currentTier.tier ? " (this campaign)" : ""}
             </li>
           ))}
         </ul>
@@ -141,7 +161,7 @@ export default function RulesPage() {
           A winning result does not mean you have won. It means you are a potential
           winner, and the campaign is paused for verification. You will be told on
           screen and by email, and you will receive a claim reference and a
-          deadline of {CURRENT_CAMPAIGN.claimDeadlineDays} days to begin your claim.
+          deadline of {claimDeadlineDays} days to begin your claim.
           Failing to begin a claim before the deadline forfeits the prize.
         </p>
         <p>To confirm a claim you must provide:</p>
@@ -223,14 +243,30 @@ export default function RulesPage() {
 
       <section>
         <h2>If a potential winner is disqualified</h2>
+        {/*
+          This passage used to state the mechanism — "the sealed winning entry
+          number is left untouched, and the next entry to reach it wins" — which
+          the engine cannot deliver: by the time a claim exists the entry counter
+          has already passed the sealed target, so no later entry can reach it.
+          Publishing a mechanism the code does not implement is worse than
+          publishing the policy alone, so the policy stands and the mechanism is
+          withheld pending the resume implementation and legal review. Wording is
+          not final; it is listed under "Still required before launch" below.
+        */}
         <p>
           If a potential winner fails verification, does not meet the eligibility
           requirements, or does not complete their claim before the deadline, the
           prize is not awarded to them and{" "}
-          <strong>the campaign resumes</strong>. The sealed winning entry number is
-          left untouched, and the next entry to reach it wins. This is decided in
-          advance, on purpose: the outcome of a disqualification is not a judgement
-          made after the fact.
+          <strong>the campaign resumes</strong>. The prize stays available until a
+          valid winner is confirmed. That the campaign resumes is decided in
+          advance rather than case by case, and the resolution of any
+          disqualification will be recorded in the campaign&rsquo;s audit trail.
+        </p>
+        <p>
+          How the winning entry is determined for a resumed campaign will be stated
+          here, and a cryptographic commitment to it published, before the campaign
+          accepts another entry. As with the original draw, nobody — including{" "}
+          {BRAND.name} staff — can select a winner.
         </p>
       </section>
 
@@ -246,7 +282,7 @@ export default function RulesPage() {
       <section>
         <h2>Sponsor</h2>
         <p>
-          This campaign is provided by {CURRENT_CAMPAIGN.sponsorName}. A sponsor
+          This campaign is provided by {sponsor.name}. A sponsor
           funds or supplies the prize and receives advertising exposure. A sponsor
           cannot select the winner, change the odds, alter these rules after launch,
           or access entrant personal data. See the{" "}
@@ -266,8 +302,10 @@ export default function RulesPage() {
           <br />
           Review by qualified counsel for every listed jurisdiction; the operating
           entity&rsquo;s legal name and address; a winners-list request address; the
-          administrator&rsquo;s identity; and any state registration or bonding that
-          applies to a future higher-value campaign.
+          administrator&rsquo;s identity; any state registration or bonding that
+          applies to a future higher-value campaign; and the exact wording and
+          mechanism for resuming a campaign after a disqualification, which is
+          stated as policy above but not yet implemented or approved.
         </p>
       </section>
     </DocumentShell>
