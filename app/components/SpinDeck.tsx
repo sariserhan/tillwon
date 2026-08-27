@@ -137,6 +137,21 @@ export function SpinDeck({
    * anywhere showing their claim reference. Telling the page a win is in flight
    * before the animation starts keeps the deck mounted through the reveal.
    *
+   * Two invariants make that safe, and neither is about call order — the
+   * campaign's setState actually runs FIRST, synchronously in the WebSocket
+   * message handler, with this call following in a promise continuation:
+   *
+   * 1. `win` and the `getActiveCampaign` subscription are both `useState` on the
+   *    same fiber (`Home`) at the same lane, so they always land in the same
+   *    commit. No render can see the paused campaign without also seeing `win`.
+   *    Splitting `Home`'s `useQuery` into a child component, or a Convex version
+   *    that drives subscriptions through `useSyncExternalStore` instead, would
+   *    break this — that is the thing to re-check, not the ordering.
+   * 2. This fires from a promise continuation, not a cancellable timer, so the
+   *    signal reaches `Home`'s stable `setWin` even if the deck were unmounted
+   *    first. That is precisely what the settled call cannot do, and why the win
+   *    has to be reported twice.
+   *
    * The deck cannot show the notice itself: it is a full-width printed panel,
    * not a deck element. The result is already immutable in the database by the
    * time either call fires; these only decide when the page catches up.
@@ -226,8 +241,10 @@ export function SpinDeck({
     const reference = pendingWin.current;
     if (reference !== null) {
       // "May have won", never "won" — nothing has been awarded until the claim
-      // is verified. The full notice is the page's job; this is what a screen
-      // reader hears at the instant the reels stop.
+      // is verified. Mostly a fallback: `onWin` below batches with this, so the
+      // page swaps to PotentialWinnerPanel and its focused <h1> — not this text
+      // — is what a screen reader announces. This still has to say the honest
+      // thing, because it renders if the swap does not.
       setAnnouncement(
         `You may have won. Your result is under review. Claim reference ${reference}.`,
       );

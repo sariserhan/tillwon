@@ -73,8 +73,16 @@ export default function Home() {
   // it. During that window this page must keep rendering the deck — the winning
   // spin has already flipped the campaign to `winner_pending`, and taking the
   // paused branch would unmount the deck mid-reveal and cancel the timer that
-  // reports the settled win. The deadline is frozen with the reference rather
-  // than recomputed per render, so the date cannot drift under a re-render.
+  // reports the settled win.
+  //
+  // What makes that reliable is that this `useState` and the `useQuery` above
+  // sit on the SAME fiber at the same lane, so they cannot be committed in
+  // separate renders — never an ordering guarantee (the query's update is
+  // actually applied first). Moving the `useQuery` into a child component would
+  // split the lane and reopen the race. See SpinDeck's `onWin` doc comment.
+  //
+  // The deadline is frozen with the reference rather than recomputed per render,
+  // so the date cannot drift under a re-render.
   const [win, setWin] = useState<{
     reference: string;
     deadline: string;
