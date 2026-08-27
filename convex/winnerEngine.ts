@@ -119,11 +119,12 @@ export const activationParameters = internalQuery({
  */
 export const activateCampaign = internalAction({
   args: { campaignId: v.id("campaigns") },
-  handler: async (ctx, args) => {
-    const { shardCount, projectedVolume } = await ctx.runQuery(
+  handler: async (ctx, args): Promise<string> => {
+    const params: { shardCount: number; projectedVolume: number } = await ctx.runQuery(
       internal.winnerEngine.activationParameters,
       { campaignId: args.campaignId },
     );
+    const { shardCount, projectedVolume } = params;
 
     // Each value comes from its own CSPRNG draw: winningShard and winningCount
     // are drawn independently to avoid correlation, and the nonce gets its own

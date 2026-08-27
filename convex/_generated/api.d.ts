@@ -8,7 +8,20 @@
  * @module
  */
 
+import type * as balances from "../balances.js";
+import type * as campaigns from "../campaigns.js";
+import type * as eligibility from "../eligibility.js";
+import type * as lib_audit from "../lib/audit.js";
+import type * as lib_jurisdictions from "../lib/jurisdictions.js";
+import type * as lib_reels from "../lib/reels.js";
+import type * as lib_resetDate from "../lib/resetDate.js";
+import type * as lib_symbols from "../lib/symbols.js";
+import type * as lib_tiers from "../lib/tiers.js";
+import type * as rules from "../rules.js";
+import type * as seed from "../seed.js";
+import type * as spins from "../spins.js";
 import type * as users from "../users.js";
+import type * as winnerEngine from "../winnerEngine.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +30,20 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  balances: typeof balances;
+  campaigns: typeof campaigns;
+  eligibility: typeof eligibility;
+  "lib/audit": typeof lib_audit;
+  "lib/jurisdictions": typeof lib_jurisdictions;
+  "lib/reels": typeof lib_reels;
+  "lib/resetDate": typeof lib_resetDate;
+  "lib/symbols": typeof lib_symbols;
+  "lib/tiers": typeof lib_tiers;
+  rules: typeof rules;
+  seed: typeof seed;
+  spins: typeof spins;
   users: typeof users;
+  winnerEngine: typeof winnerEngine;
 }>;
 
 /**

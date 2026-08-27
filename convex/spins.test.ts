@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { convexTest } from "convex-test";
 import schema from "./schema";
@@ -73,7 +74,7 @@ describe("spinExecute", () => {
       campaignStatus: "live",
     });
     expect(result.symbols).toHaveLength(3);
-    expect(isJackpot(result.symbols)).toBe(false);
+    expect(isJackpot(result.symbols as SymbolKey[])).toBe(false);
   });
 
   it("allows ten spins and refuses the eleventh", async () => {
