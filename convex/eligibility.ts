@@ -26,6 +26,14 @@ function ageOn(birthDate: string, now: number): number {
  * Returns the first failing reason, or null. Order matters: account status is
  * checked before anything a user could fix, so a suspended account is never told
  * to verify an email instead.
+ *
+ * KNOWN OPEN GAP: nothing in the product collects `country`, `region` or
+ * `birthDate`. `ensureUser` leaves all three undefined and there is no profile or
+ * onboarding surface that sets them, so every user fails INELIGIBLE_REGION here
+ * and no spin can currently complete. These checks are correct; the missing piece
+ * is the capture flow, which is its own task — collecting a date of birth and a
+ * state of residence needs a real consent and data-retention story, not a form
+ * bolted onto the deck.
  */
 export async function eligibilityReason(
   ctx: MutationCtx | QueryCtx,

@@ -1,4 +1,4 @@
-import { action, internalMutation } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { writeAudit } from "./lib/audit.ts";
@@ -34,6 +34,22 @@ export const sealTarget = internalMutation({
   handler: async (ctx, args) => {
     const campaign = await ctx.db.get(args.campaignId);
     if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+
+    // The shard rows below are created from campaign.shardCount, and spinExecute
+    // only ever assigns shards in [0, campaign.shardCount). A target outside that
+    // range is a campaign nothing can ever win, which would look identical to bad
+    // luck for its whole life — so it fails loudly here instead.
+    if (
+      !Number.isInteger(args.winningShard) ||
+      args.winningShard < 0 ||
+      args.winningShard >= campaign.shardCount
+    ) {
+      throw new Error("WINNING_SHARD_OUT_OF_RANGE");
+    }
+    // shardSequence starts at 1, so a target of 0 or below is equally unreachable.
+    if (!Number.isInteger(args.winningCount) || args.winningCount < 1) {
+      throw new Error("WINNING_COUNT_OUT_OF_RANGE");
+    }
 
     // Sealing twice would let a second target replace the committed one, which is
     // exactly the tampering the commitment exists to prevent.
@@ -74,19 +90,41 @@ export const sealTarget = internalMutation({
   },
 });
 
+/** The activation parameters, read from the campaign rather than from a caller. */
+export const activationParameters = internalQuery({
+  args: { campaignId: v.id("campaigns") },
+  handler: async (ctx, args) => {
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    return {
+      shardCount: campaign.shardCount,
+      projectedVolume: campaign.projectedVolume,
+    };
+  },
+});
+
 /**
  * Draws the sealed target. An action, because randomness belongs outside a
  * transaction that may be retried — and this is the only place the product needs
  * cryptographic randomness at all, since a predetermined-entry engine does no RNG
  * per spin.
+ *
+ * Internal, and it takes no odds parameters. A caller-supplied shardCount would
+ * let anyone seal a campaign at odds of their choosing (`shardCount: 1` makes the
+ * next spin win) or seal a target outside the range spinExecute assigns, making
+ * the campaign unwinnable. Both come from the campaign document instead. There is
+ * no admin UI yet, so activation happens through `npx convex run`, which reaches
+ * internal functions with deploy credentials — the right trust level for sealing
+ * a prize.
  */
-export const activateCampaign = action({
-  args: {
-    campaignId: v.id("campaigns"),
-    shardCount: v.number(),
-    projectedVolume: v.number(),
-  },
+export const activateCampaign = internalAction({
+  args: { campaignId: v.id("campaigns") },
   handler: async (ctx, args) => {
+    const { shardCount, projectedVolume } = await ctx.runQuery(
+      internal.winnerEngine.activationParameters,
+      { campaignId: args.campaignId },
+    );
+
     // Each value comes from its own CSPRNG draw: winningShard and winningCount
     // are drawn independently to avoid correlation, and the nonce gets its own
     // 256-bit buffer specifically. shardCount and winningCount both have very
@@ -95,11 +133,11 @@ export const activateCampaign = action({
     // of one small buffer would leave the published commitment hash brute-forceable.
     const shardBuf = new Uint32Array(1);
     crypto.getRandomValues(shardBuf);
-    const winningShard = shardBuf[0] % args.shardCount;
+    const winningShard = shardBuf[0] % shardCount;
 
     const countBuf = new Uint32Array(1);
     crypto.getRandomValues(countBuf);
-    const perShard = Math.max(1, Math.floor(args.projectedVolume / args.shardCount));
+    const perShard = Math.max(1, Math.floor(projectedVolume / shardCount));
     const winningCount = (countBuf[0] % perShard) + 1;
 
     const nonceBytes = new Uint8Array(32);

@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { requireUser } from "./users.ts";
 
 export const acceptRules = mutation({
+  // ipHash is client-reported and unverified — see the note on `spins.ipHash` in
+  // schema.ts. It records what the browser claimed, not where acceptance came from.
   args: { ipHash: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);

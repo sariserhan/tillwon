@@ -141,6 +141,7 @@ export default defineSchema({
     campaignId: v.id("campaigns"),
     rulesVersion: v.number(),
     acceptedAt: v.number(),
+    /** Client-reported and unverified — see the note on `spins.ipHash`. */
     ipHash: v.string(),
   }).index("by_user_campaign", ["userId", "campaignId"]),
 
@@ -183,6 +184,16 @@ export default defineSchema({
     invalidReason: v.optional(v.string()),
     riskScore: v.number(),
     riskFlags: v.array(v.string()),
+    /**
+     * CLIENT-REPORTED AND UNVERIFIED. Both arrive as plain mutation arguments, so
+     * whatever the browser sends is what lands here — today spinExecute's only
+     * caller sends the literal string "browser" as deviceHash. They are fraud
+     * signals to correlate against each other, never attested identity: a value
+     * here proves nothing about who spun or from where, and no eligibility,
+     * disqualification or claim decision may rest on one. Server-side capture
+     * (an HTTP action that hashes the real request IP) is the fix, and until it
+     * exists these fields must not be read as evidence.
+     */
     ipHash: v.string(),
     deviceHash: v.string(),
     engineVersion: v.string(),

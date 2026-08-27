@@ -38,7 +38,36 @@ export const getActiveCampaign = query({
     if (sponsor === null || prize === null || rules === null) return null;
 
     return {
-      campaign: pending,
+      // Picked field by field, never spread. This query deliberately also serves
+      // winner_pending campaigns — the one state where potentialWinnerUserId and
+      // winningSpinId are populated — so returning the raw document would hand a
+      // potential winner's internal user id to every visitor. revealedTarget and
+      // revealedNonce are withheld for the same reason: they are the sealed
+      // target, and publishing them is a deliberate end-of-campaign act, not a
+      // side effect of rendering the home page.
+      campaign: {
+        _id: pending._id,
+        slug: pending.slug,
+        title: pending.title,
+        description: pending.description,
+        status: pending.status,
+        startAt: pending.startAt,
+        endAt: pending.endAt,
+        dailySpins: pending.dailySpins,
+        resetTimezone: pending.resetTimezone,
+        resetHour: pending.resetHour,
+        reelColumns: pending.reelColumns,
+        projectedVolume: pending.projectedVolume,
+        oddsDenominator: pending.oddsDenominator,
+        commitmentHash: pending.commitmentHash,
+        eligibleCountries: pending.eligibleCountries,
+        eligibleRegions: pending.eligibleRegions,
+        minimumAge: pending.minimumAge,
+        requireEmailVerification: pending.requireEmailVerification,
+        activeRulesVersion: pending.activeRulesVersion,
+        disqualificationPolicy: pending.disqualificationPolicy,
+        activatedAt: pending.activatedAt,
+      },
       sponsor,
       prize,
       rules,

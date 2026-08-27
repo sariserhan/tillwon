@@ -30,6 +30,8 @@ function claimReference(seed: number): string {
 export const spinExecute = mutation({
   args: {
     idempotencyKey: v.string(),
+    // Client-reported, unverified, and written verbatim into the audit trail.
+    // See the note on `spins.ipHash` in schema.ts: fraud signal, not evidence.
     deviceHash: v.string(),
     ipHash: v.optional(v.string()),
   },

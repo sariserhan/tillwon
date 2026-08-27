@@ -31,11 +31,45 @@ describe("campaigns", () => {
     expect(active!.rules.noPurchaseStatement).toContain("No purchase necessary");
   });
 
-  it("never exposes the sealed target through the public query", async () => {
+  it("never exposes internal campaign fields, including a potential winner", async () => {
     await t.mutation(internal.seed.seedCampaign, {});
+
+    // winner_pending is exactly the state this query still serves AND the state
+    // where the internal fields are populated, so it is the case worth asserting.
+    const userId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("users", {
+        clerkId: "clerk_winner",
+        email: "winner@example.com",
+        emailVerified: true,
+        ageVerified: true,
+        accountStatus: "active",
+        role: "user",
+        fraudRiskScore: 0,
+        marketingConsent: false,
+        dailyReminderConsent: false,
+        totalSpins: 1,
+        totalPotentialWins: 1,
+      });
+      const campaign = (await ctx.db.query("campaigns").first())!;
+      await ctx.db.patch(campaign._id, {
+        status: "winner_pending",
+        potentialWinnerUserId: id,
+        revealedTarget: "3:7",
+        revealedNonce: "deadbeef",
+      });
+      return id;
+    });
+
     const active = await t.query(api.campaigns.getActiveCampaign, {});
-    expect(JSON.stringify(active)).not.toContain("winningShard");
-    expect(JSON.stringify(active)).not.toContain("winningCount");
+    expect(active).not.toBeNull();
+    expect(active!.campaign.status).toBe("winner_pending");
+
+    const body = JSON.stringify(active);
+    expect(body).not.toContain(userId);
+    expect(body).not.toContain("potentialWinnerUserId");
+    expect(body).not.toContain("winningSpinId");
+    expect(body).not.toContain("revealedTarget");
+    expect(body).not.toContain("deadbeef");
   });
 
   it("seeds an eligibility set of 46 states plus DC", async () => {
