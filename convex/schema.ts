@@ -143,4 +143,12 @@ export default defineSchema({
     acceptedAt: v.number(),
     ipHash: v.string(),
   }).index("by_user_campaign", ["userId", "campaignId"]),
+
+  spinBalances: defineTable({
+    userId: v.id("users"),
+    campaignId: v.id("campaigns"),
+    resetDate: v.string(),
+    allocated: v.number(),
+    used: v.number(),
+  }).index("by_user_campaign_date", ["userId", "campaignId", "resetDate"]),
 });
