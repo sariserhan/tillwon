@@ -135,4 +135,12 @@ export default defineSchema({
   })
     .index("by_entity", ["entityType", "entityId"])
     .index("by_action", ["action"]),
+
+  rulesAcceptances: defineTable({
+    userId: v.id("users"),
+    campaignId: v.id("campaigns"),
+    rulesVersion: v.number(),
+    acceptedAt: v.number(),
+    ipHash: v.string(),
+  }).index("by_user_campaign", ["userId", "campaignId"]),
 });
