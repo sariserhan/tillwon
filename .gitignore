@@ -43,3 +43,7 @@ next-env.d.ts
 # impeccable decision-page runtime state (server logs, poll state, raw answers)
 .impeccable/questions/
 **/.impeccable/questions/
+
+# git worktrees
+/.claude/worktrees/
+/.worktrees/
