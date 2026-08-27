@@ -33,4 +33,14 @@ describe("resetDateKey", () => {
     expect(before).toBe("2026-10-31");
     expect(after).toBe("2026-11-01");
   });
+
+  it("shifts the boundary correctly across a DST fall-back with a nonzero reset hour", () => {
+    // 2026-11-01T07:00:00Z is 02:00 EST — local wall-clock time *after* the
+    // fall-back, and still before a 3am reset. It must belong to Oct 31, not
+    // the transition day: a fixed-duration shift undercounts wall-clock hours
+    // here because 1am-2am occurs twice during the fold.
+    expect(resetDateKey(at("2026-11-01T07:00:00Z"), "America/New_York", 3)).toBe(
+      "2026-10-31",
+    );
+  });
 });
