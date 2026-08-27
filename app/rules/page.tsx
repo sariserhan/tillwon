@@ -259,8 +259,8 @@ export default async function RulesPage() {
           prize is not awarded to them and{" "}
           <strong>the campaign resumes</strong>. The prize stays available until a
           valid winner is confirmed. That the campaign resumes is decided in
-          advance rather than case by case, and the resolution of every
-          disqualification is recorded in the campaign&rsquo;s audit trail.
+          advance rather than case by case, and the resolution of any
+          disqualification will be recorded in the campaign&rsquo;s audit trail.
         </p>
         <p>
           How the winning entry is determined for a resumed campaign will be stated

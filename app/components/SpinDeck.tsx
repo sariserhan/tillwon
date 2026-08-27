@@ -123,13 +123,25 @@ export function SpinDeck({
   /** Campaign-configured allocation, shown until the real balance loads. */
   dailySpins: number;
   /**
-   * Called once the reels have settled on a potential win, with the claim
-   * reference the server issued. The deck cannot show the notice itself — it is a
-   * full-width printed panel, not a deck element — so the page swaps its content.
-   * The result is already immutable in the database by the time this fires; this
-   * only decides when the page catches up.
+   * A potential win, reported twice: once with `revealed: false` in the same
+   * microtask the spin mutation resolves, and again with `revealed: true` once
+   * the reels have settled on it.
+   *
+   * The early call is not cosmetic — it closes a race. The same mutation that
+   * returns the win also flips the campaign to `winner_pending`, and the page's
+   * reactive `getActiveCampaign` subscription lands well inside this deck's
+   * ~2.8s reveal. If the page took its paused branch on that update it would
+   * unmount this deck, whose unmount cleanup clears every reveal timer —
+   * including the one that reports the settled win — and the actual winner would
+   * be left looking at the notice written for everyone else, with no surface
+   * anywhere showing their claim reference. Telling the page a win is in flight
+   * before the animation starts keeps the deck mounted through the reveal.
+   *
+   * The deck cannot show the notice itself: it is a full-width printed panel,
+   * not a deck element. The result is already immutable in the database by the
+   * time either call fires; these only decide when the page catches up.
    */
-  onWin: (claimReference: string) => void;
+  onWin: (claimReference: string, revealed: boolean) => void;
 }) {
   const reduced = usePrefersReducedMotion();
   const resetIn = useResetCountdown();
@@ -219,7 +231,7 @@ export function SpinDeck({
       setAnnouncement(
         `You may have won. Your result is under review. Claim reference ${reference}.`,
       );
-      onWin(reference);
+      onWin(reference, true);
       return;
     }
     setAnnouncement(resultMessage(symbols, pendingRemaining.current));
@@ -273,6 +285,14 @@ export function SpinDeck({
     pendingWin.current = result.isPotentialWinner
       ? (result.claimReference ?? null)
       : null;
+
+    // Before scheduleReveal, in the microtask that resolved the mutation: the
+    // campaign is already `winner_pending` server-side, and the page must know a
+    // win is in flight here before its own subscription tells it the campaign
+    // paused. See the onWin doc comment — a timer cannot carry this, because
+    // losing the race unmounts the deck and cancels the timer.
+    if (pendingWin.current !== null) onWin(pendingWin.current, false);
+
     setCanSkip(true);
     scheduleReveal(symbols);
   };

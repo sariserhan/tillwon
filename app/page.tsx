@@ -67,12 +67,18 @@ function claimDeadlineLabel(): string {
 export default function Home() {
   const active = useQuery(api.campaigns.getActiveCampaign, {});
   // Set only by the deck, from the server's own mutation result, and only when
-  // that result says isPotentialWinner. The client never decides this. The
-  // deadline is frozen alongside the reference at the moment of the win rather
+  // that result says isPotentialWinner. The client never decides this.
+  //
+  // `revealed` is false between the mutation resolving and the reels settling on
+  // it. During that window this page must keep rendering the deck — the winning
+  // spin has already flipped the campaign to `winner_pending`, and taking the
+  // paused branch would unmount the deck mid-reveal and cancel the timer that
+  // reports the settled win. The deadline is frozen with the reference rather
   // than recomputed per render, so the date cannot drift under a re-render.
   const [win, setWin] = useState<{
     reference: string;
     deadline: string;
+    revealed: boolean;
   } | null>(null);
 
   if (active === undefined) return <main className="min-h-dvh bg-studio-900" />;
@@ -90,11 +96,11 @@ export default function Home() {
   const valueLabel = formatMoney(prize.estimatedRetailValue, prize.currency);
   const faceLabel = faceLabelFrom(prize.title);
 
-  // This visitor just spun the winning entry. Checked before the paused branch
-  // below, because the same spin flips the campaign to winner_pending — without
-  // this order the person who may have won would be shown the notice written for
-  // everyone else.
-  if (win !== null) {
+  // This visitor spun the winning entry, and the reels have finished revealing
+  // it. Checked before the paused branch below — the same spin already flipped
+  // the campaign to winner_pending, so without this the person who may have won
+  // would be shown the notice written for everyone else.
+  if (win?.revealed) {
     return (
       <main>
         <SiteHeader />
@@ -116,7 +122,13 @@ export default function Home() {
   // eligibility queries both return nothing outside `live`, and the deck falls
   // back to the campaign's configured allocation, so leaving it mounted here
   // advertises "10 of 10 free spins left today" on a campaign accepting none.
-  if (campaign.status === "winner_pending") {
+  //
+  // `win === null` is the exception, and only for the one client whose own spin
+  // caused the pause: its reels are still turning on a result it has not shown
+  // yet. Everyone else — a visitor who never spun, or one whose own spin lost —
+  // has no `win` and reaches the notice on the very next render after the
+  // campaign flips.
+  if (campaign.status === "winner_pending" && win === null) {
     return (
       <main>
         <SiteHeader />
@@ -184,8 +196,12 @@ export default function Home() {
                   columns={campaign.reelColumns}
                   oddsDenominator={oddsDenominator}
                   dailySpins={campaign.dailySpins}
-                  onWin={(reference) =>
-                    setWin({ reference, deadline: claimDeadlineLabel() })
+                  onWin={(reference, revealed) =>
+                    setWin((prev) =>
+                      prev?.reference === reference
+                        ? { ...prev, revealed }
+                        : { reference, deadline: claimDeadlineLabel(), revealed },
+                    )
                   }
                 />
               </div>

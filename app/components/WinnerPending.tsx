@@ -62,7 +62,10 @@ export function PotentialWinnerPanel({
         <h1
           ref={heading}
           tabIndex={-1}
-          className="font-display mt-6 text-[clamp(1.6rem,4.4vw,2.4rem)] uppercase leading-[1.02] text-ink outline-none"
+          /* No outline-none: the global :focus-visible rule in globals.css puts
+             the tungsten ring on this heading, so a keyboard user can see where
+             focus landed. */
+          className="font-display mt-6 text-[clamp(1.6rem,4.4vw,2.4rem)] uppercase leading-[1.02] text-ink"
         >
           You may have won the {prizeTitle}
         </h1>
@@ -194,9 +197,9 @@ export function CampaignPausedNotice() {
             cannot keep. See the matching passage in the Official Rules. */}
         <p className="mt-3 max-w-[56ch] text-base leading-relaxed text-caption">
           If verification is not completed, the prize is not awarded to that
-          entrant and the draw resumes. How it resumes is governed by the Official
-          Rules and recorded in the campaign&rsquo;s audit trail — nobody chooses a
-          winner after the fact.
+          entrant and the draw resumes. How it resumes will be set out in the
+          Official Rules before entries reopen, and the outcome recorded there —
+          nobody chooses a winner after the fact.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
