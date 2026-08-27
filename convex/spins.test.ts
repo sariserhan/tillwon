@@ -12,11 +12,14 @@ const modules = import.meta.glob("./**/*.*s");
 // row. That's correct for production, but it means a test that seals a target on
 // a single shard and fires only 10 concurrent spins has no guarantee any of them
 // land on that shard — P(miss) = (15/16)^10 ≈ 53%, so the brief's literal test
-// would fail roughly half the time. Pinning Math.random to 0 forces every spin in
-// this file onto shard 0, which removes that flakiness AND is the correct stress
-// scenario for the guarantee under test: all ten transactions now race the exact
-// same shard row, so the "exactly one winner" assertion is proven under maximum
-// write contention rather than by chance dispersal.
+// would fail roughly half the time. Pinning Math.random to 0 forces every spin
+// onto shard 0 so the test is deterministic; note that convex-test serializes
+// mutations (see its TransactionManager — no OCC conflict simulation exists in
+// the package), so this test proves the campaign locks correctly after one
+// winner and stays locked for the rest of a Promise.all batch, not the
+// OCC-conflict-and-retry mechanism itself. That guarantee rests on Convex's
+// documented transaction semantics for concurrent writes to the same document,
+// which this test harness can't simulate.
 beforeEach(() => {
   vi.spyOn(Math, "random").mockReturnValue(0);
 });

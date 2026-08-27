@@ -216,5 +216,6 @@ export default defineSchema({
   })
     .index("by_reference", ["claimReference"])
     .index("by_user", ["userId"])
-    .index("by_campaign", ["campaignId"]),
+    .index("by_campaign", ["campaignId"])
+    .index("by_spin", ["spinId"]),
 });

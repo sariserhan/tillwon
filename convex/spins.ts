@@ -46,11 +46,16 @@ export const spinExecute = mutation({
       .unique();
     if (replay !== null) {
       const campaign = await ctx.db.get(replay.campaignId);
+      // Scoped to this exact spin, not just the campaign: disqualificationPolicy
+      // already allows "select_alternate", which will eventually produce a second
+      // claim on the same campaign after a disqualification. Matching on
+      // campaignId alone would then let a replayed idempotency key hand back
+      // another user's claimReference.
       const claim = replay.isPotentialWinner
         ? await ctx.db
             .query("claims")
-            .withIndex("by_campaign", (q) => q.eq("campaignId", replay.campaignId))
-            .first()
+            .withIndex("by_spin", (q) => q.eq("spinId", replay._id))
+            .unique()
         : null;
       const balance = await ctx.db
         .query("spinBalances")

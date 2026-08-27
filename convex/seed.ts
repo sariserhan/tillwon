@@ -9,7 +9,7 @@ const PRIZE_VALUE_CENTS = 10_000; // $100 gift card, the brief's seed campaign
  * The seed campaign from the brief §29: a low-value self-funded prize, so spin
  * reliability and the claim process can be proven before a sponsor is involved.
  *
- * The commitment hash is a placeholder here; Task 6's activateCampaign action
+ * The commitment hash is a placeholder here; Task 7's activateCampaign action
  * replaces it with a real sealed target.
  */
 export const seedCampaign = internalMutation({
