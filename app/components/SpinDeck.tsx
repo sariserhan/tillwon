@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { FlapDrum } from "./FlapDrum";
 import { RulesGate } from "./RulesGate";
-import { SYMBOL_LABELS, type SymbolKey } from "@/app/lib/symbols.ts";
+import { SYMBOL_LABELS, type SymbolKey } from "@/convex/lib/symbols.ts";
 import { demoSpin, reelQueue } from "@/app/lib/demoSpin.ts";
-import { formatOdds } from "@/app/lib/tiers.ts";
+import { formatOdds } from "@/convex/lib/tiers.ts";
 import {
   FLAP_MS,
   SETTLE_TAIL_MS,

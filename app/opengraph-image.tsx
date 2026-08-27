@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { BRAND } from "@/app/lib/brand.ts";
-import { formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
 import { CURRENT_CAMPAIGN, CURRENT_ODDS } from "@/app/lib/currentCampaign.ts";
 
 export const alt = `${BRAND.name} — ten free spins every day, no purchase necessary`;

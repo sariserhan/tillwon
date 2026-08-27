@@ -1,4 +1,4 @@
-import { SYMBOL_KEYS, isJackpot, type SymbolKey } from "./symbols.ts";
+import { SYMBOL_KEYS, isJackpot, type SymbolKey } from "@/convex/lib/symbols.ts";
 
 /* ============================================================================
    DEMO STUB — NOT THE PRODUCT'S SPIN ENGINE. DELETE AT CHECKPOINT 5.

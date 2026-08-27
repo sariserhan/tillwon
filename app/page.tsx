@@ -9,7 +9,7 @@ import {
   SealedCommitment,
   TallyLamp,
 } from "./components/StudioFurniture";
-import { formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
 import {
   CURRENT_CAMPAIGN,
   CURRENT_ODDS,

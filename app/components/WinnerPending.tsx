@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatMoney } from "@/app/lib/tiers.ts";
+import { formatMoney } from "@/convex/lib/tiers.ts";
 import { CURRENT_CAMPAIGN } from "@/app/lib/currentCampaign.ts";
 
 /**

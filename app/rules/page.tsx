@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { DocumentShell } from "@/app/components/DocumentShell";
-import { TIERS, formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { TIERS, formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
 import { BRAND } from "@/app/lib/brand.ts";
 import {
   ELIGIBLE_JURISDICTIONS,
   EXCLUSIONS,
   MINIMUM_AGE,
   registrationDuty,
-} from "@/app/lib/jurisdictions.ts";
+} from "@/convex/lib/jurisdictions.ts";
 import {
   CURRENT_CAMPAIGN,
   CURRENT_ODDS,

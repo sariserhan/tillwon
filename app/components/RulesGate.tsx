@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
-import { MINIMUM_AGE } from "@/app/lib/jurisdictions.ts";
+import { MINIMUM_AGE } from "@/convex/lib/jurisdictions.ts";
 
 /**
  * The rules-acceptance gate. Spec section 3 requires acceptance before a spin, and

@@ -6,7 +6,7 @@ import { SiteFooter } from "@/app/components/SiteFooter";
 import { PrizeAndSponsor } from "@/app/components/PrizeAndSponsor";
 import { HowItWorks } from "@/app/components/HowItWorks";
 import { PrizeOnPlinth, TallyLamp } from "@/app/components/StudioFurniture";
-import { formatMoney, formatOdds } from "@/app/lib/tiers.ts";
+import { formatMoney, formatOdds } from "@/convex/lib/tiers.ts";
 import { BRAND } from "@/app/lib/brand.ts";
 import {
   CURRENT_CAMPAIGN,
