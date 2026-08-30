@@ -26,16 +26,22 @@ describe("drawWinningReels", () => {
 });
 
 describe("drawLosingReels", () => {
-  it("never produces a jackpot at any tier", () => {
-    for (const t of TIERS) {
-      const rand = mulberry32(7);
-      for (let i = 0; i < 20_000; i++) {
-        const reels = drawLosingReels(t.columns, rand);
-        expect(reels).toHaveLength(t.columns);
-        expect(isJackpot(reels)).toBe(false);
+  it(
+    "never produces a jackpot at any tier",
+    () => {
+      for (const t of TIERS) {
+        const rand = mulberry32(7);
+        for (let i = 0; i < 20_000; i++) {
+          const reels = drawLosingReels(t.columns, rand);
+          expect(reels).toHaveLength(t.columns);
+          expect(isJackpot(reels)).toBe(false);
+        }
       }
-    }
-  });
+    },
+    // 120,000 draws across 6 tiers sits right at vitest's 5s default when the
+    // rest of the suite is transforming/importing concurrently.
+    10_000,
+  );
 
   it("reaches every symbol", () => {
     const rand = mulberry32(11);

@@ -423,12 +423,12 @@ export function SpinDeck({
           */}
           {!rulesAccepted ? (
             <RulesGate
-              onAccept={async () => {
+              onAccept={async (region, birthDate) => {
                 // The durable record first; the local flag only follows a
                 // committed `rulesAcceptances` row, so the deck never arms
                 // itself on an acceptance the server did not take.
                 try {
-                  await acceptRules({});
+                  await acceptRules({ region, birthDate });
                 } catch (error) {
                   return errorCopy(error);
                 }

@@ -1,61 +1,36 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { DocumentShell } from "@/app/components/DocumentShell";
+import { SiteHeader } from "@/app/components/SiteHeader";
+import { SiteFooter } from "@/app/components/SiteFooter";
 import { BRAND } from "@/app/lib/brand.ts";
+import { SignInCard } from "./SignInCard";
 
 export const metadata: Metadata = {
   title: `Sign in — ${BRAND.name}`,
-  description: "Sign-in arrives with the backend. Nothing here collects credentials.",
+  description: "Sign in with an email link. No password, ever.",
 };
 
 /**
- * Placeholder, deliberately inert.
- *
- * The header links here, so a 404 was the alternative. It shows no form at all:
- * a non-functional sign-in form that looks real is a phishing pattern, and this
- * product cannot afford to train its visitors to type an email into something
- * that does nothing.
+ * Email-link sign-in via Clerk's prebuilt widget. No password field exists to
+ * phish, so — unlike the placeholder this replaced — a form here is safe to show.
  */
 export default function SignInPage() {
   return (
-    <DocumentShell
-      title="Sign in"
-      standfirst="Accounts are not live yet."
-      draftNotice="Authentication is not built. This page exists so the header link resolves, and it deliberately shows no form — a sign-in form that does nothing is indistinguishable from a phishing page."
-    >
-      <section>
-        <h2>What is coming</h2>
-        <p>
-          Signing in will use an email magic link, Google, or Apple. You will never
-          need a password, and {BRAND.name} will never ask you for payment details —
-          there is nothing to pay for.
-        </p>
-      </section>
+    <div className="flex min-h-dvh flex-col bg-studio-900">
+      <SiteHeader />
 
-      <section>
-        <h2>In the meantime</h2>
-        <p>
-          The campaign surface is live and you can see the draw, the prize, the
-          odds, and how the winner is determined without an account.
-        </p>
-        <ul>
-          <li>
-            <Link href="/" className="underline">
-              The current draw
-            </Link>
-          </li>
-          <li>
-            <Link href="/rules" className="underline">
-              Official Rules
-            </Link>
-          </li>
-          <li>
-            <Link href="/winners" className="underline">
-              Winners
-            </Link>
-          </li>
-        </ul>
-      </section>
-    </DocumentShell>
+      <main
+        id="content"
+        className="studio-light flex flex-1 items-center justify-center px-4 py-16 sm:px-6"
+      >
+        <div className="flex flex-col items-center gap-6">
+          <h1 className="font-display text-center text-[clamp(1.4rem,3.6vw,2rem)] uppercase leading-[1.04] text-enamel">
+            Sign in
+          </h1>
+          <SignInCard />
+        </div>
+      </main>
+
+      <SiteFooter />
+    </div>
   );
 }

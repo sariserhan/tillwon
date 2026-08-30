@@ -97,4 +97,29 @@ describe("eligibility", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ userId, rulesVersion: 1 });
   });
+
+  it("stores the self-certified region and birthdate submitted with acceptance, and becomes eligible", async () => {
+    const as = t.withIdentity({
+      subject: "clerk_grace",
+      email: "grace@example.com",
+      emailVerified: true,
+    });
+    const userId = await as.mutation(api.users.ensureUser, {});
+
+    await as.mutation(api.rules.acceptRules, {
+      region: "CA",
+      birthDate: "1985-03-15",
+    });
+
+    const user = await t.run(async (ctx) => ctx.db.get(userId));
+    expect(user).toMatchObject({
+      country: "US",
+      region: "CA",
+      birthDate: "1985-03-15",
+    });
+    expect(await as.query(api.eligibility.getEligibilityStatus, {})).toEqual({
+      eligible: true,
+      reason: null,
+    });
+  });
 });
