@@ -547,6 +547,44 @@ describe("claims", () => {
         }),
       ).rejects.toThrow("PUBLIC_DISPLAY_NAME_TOO_LONG");
     });
+
+    it("allows upload, registration and resubmission from more_info_required, and clears the message", async () => {
+      const t = convexTest(schema, modules);
+      const ctx = await withAllDocuments(t);
+      await ctx.as.mutation(api.claims.submitClaimDocuments, {
+        reference: ctx.reference,
+        legalName: "Ada Lovelace",
+        affidavitAccepted: true,
+        publicityReleaseAccepted: true,
+      });
+      const claim = await t.run((c) =>
+        c.db.query("claims").withIndex("by_reference", (q) => q.eq("claimReference", ctx.reference)).unique(),
+      );
+      await t.run((c) =>
+        c.db.patch(claim!._id, { status: "more_info_required", moreInfoMessage: "blurry photo" }),
+      );
+
+      // generateDocumentUploadUrl and registerUploadedDocument must both
+      // still accept calls in this state — this is the whole point of
+      // isEditable() covering more_info_required alongside potential_winner.
+      const newStorageId = await uploadFile(t, ctx.as, ctx.reference, "image/png", pngBytes);
+      await ctx.as.action(api.claims.registerUploadedDocument, {
+        reference: ctx.reference,
+        type: "photo_id",
+        storageId: newStorageId as never,
+      });
+
+      await ctx.as.mutation(api.claims.submitClaimDocuments, {
+        reference: ctx.reference,
+        legalName: "Ada Lovelace",
+        affidavitAccepted: true,
+        publicityReleaseAccepted: true,
+      });
+
+      const result = await ctx.as.query(api.claims.getMyClaim, { reference: ctx.reference });
+      expect(result!.claim.status).toBe("under_review");
+      expect(result!.claim).not.toHaveProperty("moreInfoMessage");
+    });
   });
 
   it("getMyClaim returns only the document type, never the raw storage id", async () => {

@@ -308,6 +308,92 @@ describe("admin claim review", () => {
     });
   });
 
+  describe("requestMoreInfo", () => {
+    it("sends the claim back to the claimant with a message, leaving the campaign untouched", async () => {
+      const t = convexTest(schema, modules);
+      const { claim, campaignId } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.requestMoreInfo, {
+        claimId: claim._id,
+        message: "Your photo ID is blurry, please re-upload.",
+      });
+
+      const [updatedClaim, campaign] = await t.run(async (ctx) => [
+        await ctx.db.get(claim._id),
+        await ctx.db.get(campaignId),
+      ]);
+      expect(updatedClaim!.status).toBe("more_info_required");
+      expect(updatedClaim!.moreInfoMessage).toBe("Your photo ID is blurry, please re-upload.");
+      expect(campaign!.status).toBe("winner_pending");
+
+      const auditEntries = await t.run((ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_entity", (q) => q.eq("entityType", "claims").eq("entityId", claim._id))
+          .collect(),
+      );
+      const requested = auditEntries.find((e) => e.action === "claim.more_info_requested");
+      expect(requested).toBeDefined();
+      expect(requested!.metadata).toMatchObject({ message: "Your photo ID is blurry, please re-upload." });
+    });
+
+    it("still lists a more_info_required claim in listPendingClaims", async () => {
+      const t = convexTest(schema, modules);
+      const { claim } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.requestMoreInfo, { claimId: claim._id, message: "fix it" });
+      const rows = await admin.query(api.admin.listPendingClaims, {});
+      expect(rows).toHaveLength(1);
+      expect(rows[0].claim.status).toBe("more_info_required");
+    });
+
+    it("lets the claimant replace a document and resubmit, clearing the message and returning to under_review", async () => {
+      const t = convexTest(schema, modules);
+      const { claim, as, reference } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.requestMoreInfo, {
+        claimId: claim._id,
+        message: "Your photo ID is blurry, please re-upload.",
+      });
+
+      // Re-registering under more_info_required must be allowed — this is
+      // exactly what the status gate on generateDocumentUploadUrl/
+      // registerUploadedDocument now needs to accept.
+      await as.mutation(api.claims.generateDocumentUploadUrl, { reference });
+      const newStorageId = await t.run(async (ctx) => {
+        const id = await ctx.storage.store(new Blob([pngBytes as BlobPart], { type: "image/png" }));
+        await ctx.db.patch(id as never, { contentType: "image/png" } as never);
+        return id;
+      });
+      await as.action(api.claims.registerUploadedDocument, {
+        reference,
+        type: "photo_id",
+        storageId: newStorageId as never,
+      });
+
+      await as.mutation(api.claims.submitClaimDocuments, {
+        reference,
+        legalName: "Ada Lovelace",
+        affidavitAccepted: true,
+        publicityReleaseAccepted: true,
+      });
+
+      const updatedClaim = await t.run((ctx) => ctx.db.get(claim._id));
+      expect(updatedClaim!.status).toBe("under_review");
+      expect(updatedClaim).not.toHaveProperty("moreInfoMessage");
+    });
+
+    it("refuses to request more info on a claim that isn't under_review", async () => {
+      const t = convexTest(schema, modules);
+      const { claim } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.approveClaim, { claimId: claim._id });
+      await expect(
+        admin.mutation(api.admin.requestMoreInfo, { claimId: claim._id, message: "too late" }),
+      ).rejects.toThrow("CLAIM_NOT_UNDER_REVIEW");
+    });
+  });
+
   describe("rejectClaim", () => {
     it("marks the claim disqualified and, under resume_campaign (the seed campaign's policy), resumes the campaign to live with the sealed target untouched", async () => {
       const t = convexTest(schema, modules);

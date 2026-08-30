@@ -57,7 +57,9 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   // which this codebase generates outside a transaction that may be retried.
   const reject = useAction(api.admin.rejectClaim);
   const purge = useMutation(api.admin.purgeClaimDocuments);
+  const requestMoreInfo = useMutation(api.admin.requestMoreInfo);
   const [reason, setReason] = useState("");
+  const [moreInfoText, setMoreInfoText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const router = useRouter();
@@ -97,6 +99,23 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
     }
   };
 
+  const onRequestMoreInfo = async () => {
+    if (!moreInfoText) {
+      setMessage("A message for the claimant is required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestMoreInfo({ claimId, message: moreInfoText });
+      setMoreInfoText("");
+      setMessage("Sent back to the claimant for more information.");
+    } catch (e) {
+      setMessage(friendlyErrorMessage(e, "Request failed."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onPurge = async () => {
     if (
       !window.confirm(
@@ -119,10 +138,13 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif", maxWidth: 720 }}>
       <h1>Claim {detail.claim.claimReference}</h1>
-      <p>Status: {detail.claim.status}</p>
+      <p>Status: {detail.claim.status.replace(/_/g, " ")}</p>
       <p>Legal name: {detail.claim.legalName}</p>
       <p>Self-certified region: {detail.region}</p>
       <p>Self-certified birthdate: {detail.birthDate}</p>
+      {detail.claim.status === "more_info_required" && detail.claim.moreInfoMessage && (
+        <p>Sent to claimant: &ldquo;{detail.claim.moreInfoMessage}&rdquo;</p>
+      )}
 
       <h2>Documents</h2>
       <ul>
@@ -135,20 +157,36 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
 
       {message && <p role="alert">{message}</p>}
 
-      <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
-        <button type="button" onClick={onApprove} disabled={busy}>
-          Approve
-        </button>
-        <input
-          type="text"
-          placeholder="Rejection reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        />
-        <button type="button" onClick={onReject} disabled={busy}>
-          Reject
-        </button>
-      </div>
+      {detail.claim.status === "under_review" && (
+        <>
+          <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
+            <button type="button" onClick={onApprove} disabled={busy}>
+              Approve
+            </button>
+            <input
+              type="text"
+              placeholder="Rejection reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+            <button type="button" onClick={onReject} disabled={busy}>
+              Reject
+            </button>
+          </div>
+
+          <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="What needs fixing?"
+              value={moreInfoText}
+              onChange={(e) => setMoreInfoText(e.target.value)}
+            />
+            <button type="button" onClick={onRequestMoreInfo} disabled={busy}>
+              Request more info
+            </button>
+          </div>
+        </>
+      )}
 
       <div style={{ marginTop: 16 }}>
         <button type="button" onClick={onPurge} disabled={busy}>

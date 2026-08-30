@@ -12,7 +12,7 @@ function AdminClaimsPage() {
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
-      <h1>Claims under review ({rows.length})</h1>
+      <h1>Claims pending ({rows.length})</h1>
       {rows.length === 0 ? (
         <p>Nothing pending.</p>
       ) : (
@@ -20,6 +20,7 @@ function AdminClaimsPage() {
           <thead>
             <tr>
               <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #ccc" }}>Reference</th>
+              <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #ccc" }}>Status</th>
               <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #ccc" }}>Prize</th>
               <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #ccc" }}>Region</th>
               <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #ccc" }}>Birthdate</th>
@@ -30,6 +31,9 @@ function AdminClaimsPage() {
             {rows.map((row) => (
               <tr key={row.claim._id}>
                 <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{row.claim.claimReference}</td>
+                <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                  {row.claim.status.replace(/_/g, " ")}
+                </td>
                 <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{row.prizeTitle}</td>
                 <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{row.region}</td>
                 <td style={{ padding: 8, borderBottom: "1px solid #eee" }}>{row.birthDate}</td>

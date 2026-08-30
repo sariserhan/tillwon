@@ -139,7 +139,8 @@ function ClaimForm({ reference }: { reference: string }) {
     registeredTypes.has("proof_of_address") &&
     registeredTypes.has("winner_photo");
 
-  if (claim.claim.status !== "potential_winner") {
+  const needsMoreInfo = claim.claim.status === "more_info_required";
+  if (claim.claim.status !== "potential_winner" && !needsMoreInfo) {
     return (
       <p className="mt-3.5">
         Your claim's current status is <strong>{claim.claim.status.replace(/_/g, " ")}</strong>.
@@ -166,6 +167,12 @@ function ClaimForm({ reference }: { reference: string }) {
 
   return (
     <div className="mt-3.5">
+      {needsMoreInfo && (
+        <p className="mb-3.5 border border-ink/25 bg-ink/[0.04] px-4 py-3 text-sm">
+          A reviewer needs something fixed before your claim can continue
+          {claim.claim.moreInfoMessage ? <>: &ldquo;{claim.claim.moreInfoMessage}&rdquo;</> : "."}
+        </p>
+      )}
       <label className="block text-sm font-semibold text-ink">Legal first and last name</label>
       <input
         type="text"

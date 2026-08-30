@@ -15,7 +15,12 @@ export const listPendingClaims = query({
     // queue is small in practice. Add a by_status index and .withIndex if it
     // ever grows enough to matter.
     const allClaims = await ctx.db.query("claims").collect();
-    const claims = allClaims.filter((claim) => claim.status === "under_review");
+    // "more_info_required" claims stay in this queue (not just
+    // "under_review") so requesting more info doesn't make a pending claim
+    // vanish from the admin's view of what's outstanding.
+    const claims = allClaims.filter(
+      (claim) => claim.status === "under_review" || claim.status === "more_info_required",
+    );
 
     return await Promise.all(
       claims.map(async (claim) => {
@@ -339,6 +344,38 @@ export const finalizeRejection = internalMutation({
         metadata: { reason: "claim_disqualified", claimId: claim._id },
       });
     }
+    return null;
+  },
+});
+
+/**
+ * The middle path between Approve and Reject: a fixable problem (a blurry
+ * photo, the wrong document type) shouldn't force a claimant through
+ * disqualification and whatever that campaign's policy does to them —
+ * resume_campaign hands the prize to someone else entirely, select_alternate
+ * likewise, and even a resubmission-friendly outcome there means starting
+ * over. This sends the claim back for one specific fix without touching the
+ * campaign at all.
+ */
+export const requestMoreInfo = mutation({
+  args: { claimId: v.id("claims"), message: v.string() },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const claim = await ctx.db.get(args.claimId);
+    if (claim === null) throw new Error("CLAIM_NOT_FOUND");
+    if (claim.status !== "under_review") throw new Error("CLAIM_NOT_UNDER_REVIEW");
+
+    await ctx.db.patch(claim._id, { status: "more_info_required", moreInfoMessage: args.message });
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "claim.more_info_requested",
+      entityType: "claims",
+      entityId: claim._id,
+      before: { status: "under_review" },
+      after: { status: "more_info_required" },
+      metadata: { message: args.message },
+    });
     return null;
   },
 });

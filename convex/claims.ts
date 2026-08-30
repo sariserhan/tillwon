@@ -19,6 +19,16 @@ export const documentType = v.union(
 );
 
 /**
+ * A claim accepts uploads and submission in two states: its initial
+ * "potential_winner" window, and again after an admin sends it back via
+ * admin.requestMoreInfo ("more_info_required") — the same upload/submit
+ * flow serves both a first submission and a resubmission.
+ */
+function isEditable(status: Doc<"claims">["status"]): boolean {
+  return status === "potential_winner" || status === "more_info_required";
+}
+
+/**
  * The one lookup every claimant-side function starts with. The reference
  * identifies *which* claim; owning it (being signed in as the user it
  * belongs to) is what authorizes seeing or changing it. Neither alone is
@@ -66,7 +76,7 @@ export const generateDocumentUploadUrl = mutation({
   handler: async (ctx, args) => {
     const owned = await requireOwnedClaim(ctx, args.reference);
     if (owned === null) throw new Error("CLAIM_NOT_FOUND");
-    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+    if (!isEditable(owned.claim.status)) throw new Error("CLAIM_NOT_SUBMITTABLE");
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -85,7 +95,7 @@ export const checkClaimSubmittable = internalQuery({
   handler: async (ctx, args) => {
     const owned = await requireOwnedClaim(ctx, args.reference);
     if (owned === null) throw new Error("CLAIM_NOT_FOUND");
-    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+    if (!isEditable(owned.claim.status)) throw new Error("CLAIM_NOT_SUBMITTABLE");
     return null;
   },
 });
@@ -106,7 +116,7 @@ export const finalizeDocumentRegistration = internalMutation({
   handler: async (ctx, args) => {
     const owned = await requireOwnedClaim(ctx, args.reference);
     if (owned === null) throw new Error("CLAIM_NOT_FOUND");
-    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+    if (!isEditable(owned.claim.status)) throw new Error("CLAIM_NOT_SUBMITTABLE");
 
     // A storageId is a client-supplied argument, decoupled from `reference` —
     // nothing about owning this claim proves the caller is the one who
@@ -206,7 +216,7 @@ export const submitClaimDocuments = mutation({
   handler: async (ctx, args) => {
     const owned = await requireOwnedClaim(ctx, args.reference);
     if (owned === null) throw new Error("CLAIM_NOT_FOUND");
-    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+    if (!isEditable(owned.claim.status)) throw new Error("CLAIM_NOT_SUBMITTABLE");
     // The Official Rules promise a 14-day window to begin a claim; nothing
     // previously enforced it, so a claim could be submitted and approved
     // arbitrarily long after the deadline it commits to.
@@ -241,6 +251,7 @@ export const submitClaimDocuments = mutation({
       eligibilityAffidavitAcceptedAt: now,
       publicityReleaseAcceptedAt: now,
       status: "under_review",
+      moreInfoMessage: undefined,
     });
     await writeAudit(ctx, {
       actorType: "user",
@@ -248,7 +259,7 @@ export const submitClaimDocuments = mutation({
       action: "claim.submitted",
       entityType: "claims",
       entityId: owned.claim._id,
-      before: { status: "potential_winner" },
+      before: { status: owned.claim.status },
       after: { status: "under_review" },
     });
     return null;

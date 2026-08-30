@@ -227,6 +227,9 @@ export default defineSchema({
     legalName: v.optional(v.string()),
     publicDisplayName: v.optional(v.string()),
     eligibilityAffidavitAcceptedAt: v.optional(v.number()),
+    // Set by admin.requestMoreInfo alongside status: "more_info_required";
+    // cleared on a successful resubmission (claims.submitClaimDocuments).
+    moreInfoMessage: v.optional(v.string()),
   })
     .index("by_reference", ["claimReference"])
     .index("by_user", ["userId"])
