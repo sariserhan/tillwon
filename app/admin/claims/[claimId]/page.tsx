@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
@@ -53,7 +53,9 @@ function DocumentLink({ claimId, type }: { claimId: Id<"claims">; type: DocType 
 function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   const detail = useQuery(api.admin.getClaimDetail, { claimId });
   const approve = useMutation(api.admin.approveClaim);
-  const reject = useMutation(api.admin.rejectClaim);
+  // An action, not a mutation: select_alternate needs a fresh crypto nonce,
+  // which this codebase generates outside a transaction that may be retried.
+  const reject = useAction(api.admin.rejectClaim);
   const purge = useMutation(api.admin.purgeClaimDocuments);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);

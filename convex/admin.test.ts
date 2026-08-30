@@ -202,7 +202,7 @@ describe("admin claim review", () => {
       const t = convexTest(schema, modules);
       const { claim } = await readyClaim(t);
       const admin = await asAdmin(t);
-      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "test" });
+      await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "test" });
       await admin.mutation(api.admin.purgeClaimDocuments, { claimId: claim._id });
       await expect(
         admin.query(internal.admin.getDocumentForServing, { claimId: claim._id, type: "winner_photo" }),
@@ -316,7 +316,7 @@ describe("admin claim review", () => {
         ctx.db.query("campaignSecrets").withIndex("by_campaign", (q) => q.eq("campaignId", campaignId)).unique(),
       );
       const admin = await asAdmin(t);
-      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "ID did not match" });
+      await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "ID did not match" });
 
       const [updatedClaim, campaign, secretAfter] = await t.run(async (ctx) => [
         await ctx.db.get(claim._id),
@@ -350,7 +350,7 @@ describe("admin claim review", () => {
       const t = convexTest(schema, modules);
       const { claim, campaignId, reference: firstReference } = await readyClaim(t);
       const admin = await asAdmin(t);
-      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
+      await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
 
       const asBob = t.withIdentity({ subject: "clerk_bob", email: "bob@example.com", emailVerified: true });
       const bobId = await asBob.mutation(api.users.ensureUser, {});
@@ -371,31 +371,137 @@ describe("admin claim review", () => {
       expect(campaign!.status).toBe("winner_pending");
     });
 
-    it("does not touch the campaign when disqualifying a claim under a policy other than resume_campaign", async () => {
+    it("cancels the campaign under end_campaign", async () => {
       const t = convexTest(schema, modules);
       const { claim, campaignId } = await readyClaim(t);
       await t.run((ctx) => ctx.db.patch(campaignId, { disqualificationPolicy: "end_campaign" }));
       const admin = await asAdmin(t);
-      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
+      await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
 
       const campaign = await t.run((ctx) => ctx.db.get(campaignId));
-      expect(campaign!.status).toBe("winner_pending");
+      expect(campaign!.status).toBe("cancelled");
       const campaignAuditEntries = await t.run((ctx) =>
         ctx.db
           .query("auditLogs")
           .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
           .collect(),
       );
-      expect(campaignAuditEntries.some((e) => e.action === "campaign.resumed")).toBe(false);
+      const cancelled = campaignAuditEntries.find((e) => e.action === "campaign.cancelled");
+      expect(cancelled).toBeDefined();
+      expect(cancelled!.before).toMatchObject({ status: "winner_pending" });
+      expect(cancelled!.after).toMatchObject({ status: "cancelled" });
+    });
+
+    describe("select_alternate", () => {
+      async function withSelectAlternate(t: Test) {
+        const ctx = await readyClaim(t);
+        await t.run((c) => c.db.patch(ctx.campaignId, { disqualificationPolicy: "select_alternate" }));
+        const [secretBefore, campaignBefore] = await t.run(async (c) => [
+          await c.db
+            .query("campaignSecrets")
+            .withIndex("by_campaign", (q) => q.eq("campaignId", ctx.campaignId))
+            .unique(),
+          await c.db.get(ctx.campaignId),
+        ]);
+        return { ...ctx, secretBefore: secretBefore!, commitmentHashBefore: campaignBefore!.commitmentHash };
+      }
+
+      it("advances to the next occurrence on the same shard and re-seals a new commitment", async () => {
+        const t = convexTest(schema, modules);
+        const { claim, campaignId, secretBefore, commitmentHashBefore } = await withSelectAlternate(t);
+        const admin = await asAdmin(t);
+        await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
+
+        const [campaign, secretAfter] = await t.run(async (ctx) => [
+          await ctx.db.get(campaignId),
+          await ctx.db
+            .query("campaignSecrets")
+            .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
+            .unique(),
+        ]);
+        expect(campaign!.status).toBe("live");
+        expect(campaign).not.toHaveProperty("winningSpinId");
+        expect(campaign).not.toHaveProperty("potentialWinnerUserId");
+
+        // Same shard, count advanced by exactly one, a genuinely different nonce.
+        expect(secretAfter!.winningShard).toBe(secretBefore.winningShard);
+        expect(secretAfter!.winningCount).toBe(secretBefore.winningCount + 1);
+        expect(secretAfter!.nonce).not.toBe(secretBefore.nonce);
+
+        const expectedHash = await commitmentFor(
+          secretAfter!.winningShard,
+          secretAfter!.winningCount,
+          secretAfter!.nonce,
+        );
+        expect(campaign!.commitmentHash).toBe(expectedHash);
+        expect(campaign!.commitmentHash).not.toBe(commitmentHashBefore);
+
+        const campaignAuditEntries = await t.run((ctx) =>
+          ctx.db
+            .query("auditLogs")
+            .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+            .collect(),
+        );
+        const resealed = campaignAuditEntries.find((e) => e.action === "campaign.alternate_selected");
+        expect(resealed).toBeDefined();
+        // The hash is logged; the raw target never is. (The nonce is a
+        // 64-char hex string, so this is a meaningful check — a small
+        // integer like winningCount would trivially collide with a
+        // substring of an unrelated hash/id and isn't worth asserting on.)
+        expect(JSON.stringify(resealed)).not.toContain(secretAfter!.nonce);
+      });
+
+      it("lets a new spin win against the advanced target on the same shard", async () => {
+        const t = convexTest(schema, modules);
+        const { claim, campaignId } = await withSelectAlternate(t);
+        const admin = await asAdmin(t);
+        await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
+
+        const asBob = t.withIdentity({ subject: "clerk_bob", email: "bob@example.com", emailVerified: true });
+        const bobId = await asBob.mutation(api.users.ensureUser, {});
+        await t.run((ctx) => ctx.db.patch(bobId, { country: "US", region: "NY", birthDate: "1990-01-01" }));
+        await asBob.mutation(api.rules.acceptRules, {});
+
+        const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+        const spin = await asBob.mutation(api.spins.spinExecute, {
+          idempotencyKey: "bob-win",
+          deviceHash: "test",
+        });
+        randomSpy.mockRestore();
+
+        expect(spin.isPotentialWinner).toBe(true);
+        const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+        expect(campaign!.status).toBe("winner_pending");
+      });
+
+      it("throws and reseals nothing if the current commitment was tampered with", async () => {
+        const t = convexTest(schema, modules);
+        const { claim, campaignId, secretBefore } = await withSelectAlternate(t);
+        await t.run((ctx) => ctx.db.patch(campaignId, { commitmentHash: "tampered" }));
+        const admin = await asAdmin(t);
+        await expect(
+          admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" }),
+        ).rejects.toThrow("COMMITMENT_MISMATCH");
+
+        const secretAfter = await t.run((ctx) =>
+          ctx.db.query("campaignSecrets").withIndex("by_campaign", (q) => q.eq("campaignId", campaignId)).unique(),
+        );
+        expect(secretAfter).toEqual(secretBefore);
+        // finalizeRejection is one mutation, one transaction: a throw
+        // partway through rolls back everything, including the claim
+        // disqualification that ran earlier in the same call.
+        const updatedClaim = await t.run((ctx) => ctx.db.get(claim._id));
+        expect(updatedClaim!.status).toBe("under_review");
+      });
     });
 
     it("refuses a second rejection of an already-resolved claim", async () => {
       const t = convexTest(schema, modules);
       const { claim } = await readyClaim(t);
       const admin = await asAdmin(t);
-      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "first" });
+      await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "first" });
       await expect(
-        admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "second" }),
+        admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "second" }),
       ).rejects.toThrow("CLAIM_NOT_UNDER_REVIEW");
     });
   });
@@ -405,7 +511,7 @@ describe("admin claim review", () => {
       const t = convexTest(schema, modules);
       const { claim } = await readyClaim(t);
       const admin = await asAdmin(t);
-      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
+      await admin.action(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
       await admin.mutation(api.admin.purgeClaimDocuments, { claimId: claim._id });
       const rows = await t.run((ctx) =>
         ctx.db.query("claimDocuments").withIndex("by_claim", (q) => q.eq("claimId", claim._id)).collect(),

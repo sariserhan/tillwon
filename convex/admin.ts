@@ -1,4 +1,5 @@
-import { internalQuery, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { requireAdmin } from "./lib/admin.ts";
 import { writeAudit } from "./lib/audit.ts";
@@ -183,8 +184,33 @@ export const approveClaim = mutation({
   },
 });
 
-export const rejectClaim = mutation({
+/**
+ * An action, not a mutation: select_alternate needs a fresh cryptographic
+ * nonce, and this codebase deliberately draws randomness outside a
+ * transaction that may be retried (see winnerEngine.ts's activateCampaign).
+ * The nonce is generated unconditionally and ignored by finalizeRejection
+ * for the other two policies — cheap, and it keeps this to one action call
+ * plus one atomic mutation rather than two mutations with a failure window
+ * between them.
+ */
+export const rejectClaim = action({
   args: { claimId: v.id("claims"), reason: v.string() },
+  handler: async (ctx, args): Promise<null> => {
+    const nonceBytes = new Uint8Array(32);
+    crypto.getRandomValues(nonceBytes);
+    const alternateNonce = [...nonceBytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    await ctx.runMutation(internal.admin.finalizeRejection, {
+      claimId: args.claimId,
+      reason: args.reason,
+      alternateNonce,
+    });
+    return null;
+  },
+});
+
+export const finalizeRejection = internalMutation({
+  args: { claimId: v.id("claims"), reason: v.string(), alternateNonce: v.string() },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
     const claim = await ctx.db.get(args.claimId);
@@ -203,17 +229,14 @@ export const rejectClaim = mutation({
       metadata: { reason: args.reason },
     });
 
-    // "resume_campaign" is the only disqualification policy implemented so
-    // far. Product policy (resolved 2026-08-06): a disqualified claimant
-    // returns the campaign to live with the sealed target untouched, and
-    // the next entry to reach it wins — so campaignSecrets itself is never
-    // written here. select_alternate and end_campaign need their own design
-    // (what "select an alternate winner" means mechanically, what ending a
-    // campaign mid-run does) before they can be implemented; campaigns
-    // configured with either keep today's existing behavior (frozen in
-    // winner_pending) until that happens.
     const campaign = await ctx.db.get(claim.campaignId);
-    if (campaign !== null && campaign.disqualificationPolicy === "resume_campaign") {
+    if (campaign === null) return null;
+
+    if (campaign.disqualificationPolicy === "resume_campaign") {
+      // Product policy (resolved 2026-08-06): a disqualified claimant
+      // returns the campaign to live with the sealed target untouched, and
+      // the next entry to reach it wins — so campaignSecrets itself is
+      // never written here.
       const secret = await ctx.db
         .query("campaignSecrets")
         .withIndex("by_campaign", (q) => q.eq("campaignId", campaign._id))
@@ -254,6 +277,65 @@ export const rejectClaim = mutation({
         entityId: campaign._id,
         before: { status: "winner_pending" },
         after: { status: "live" },
+        metadata: { reason: "claim_disqualified", claimId: claim._id },
+      });
+    } else if (campaign.disqualificationPolicy === "select_alternate") {
+      // Re-seals a NEW target rather than reusing sealTarget (winnerEngine.ts),
+      // which is deliberately one-time-only — weakening that guard for this
+      // path would also weaken it for the original activation seal. Verifies
+      // the current commitment before changing anything, the same
+      // never-trust-assume discipline approveClaim uses before publishing.
+      const secret = await ctx.db
+        .query("campaignSecrets")
+        .withIndex("by_campaign", (q) => q.eq("campaignId", campaign._id))
+        .unique();
+      if (secret === null) throw new Error("CAMPAIGN_NOT_ACTIVATED");
+      const recomputed = await commitmentFor(secret.winningShard, secret.winningCount, secret.nonce);
+      if (recomputed !== campaign.commitmentHash) throw new Error("COMMITMENT_MISMATCH");
+
+      // Same shard, the next occurrence — the shard's count is currently
+      // exactly winningCount (the disqualified spin that just hit it), so
+      // this is naturally the very next spin that lands on this shard, with
+      // no counter manipulation needed (unlike resume_campaign's case,
+      // where the target being restored had already been passed).
+      const newWinningCount = secret.winningCount + 1;
+      const newCommitmentHash = await commitmentFor(
+        secret.winningShard,
+        newWinningCount,
+        args.alternateNonce,
+      );
+
+      await ctx.db.patch(secret._id, { winningCount: newWinningCount, nonce: args.alternateNonce });
+      await ctx.db.patch(campaign._id, {
+        status: "live",
+        winningSpinId: undefined,
+        potentialWinnerUserId: undefined,
+        commitmentHash: newCommitmentHash,
+      });
+      // Both hashes are already public (commitmentHash lives on the
+      // campaign document); the shard/count/nonce themselves never are —
+      // same "the hash is logged, the target is not" principle sealTarget
+      // itself follows.
+      await writeAudit(ctx, {
+        actorType: "admin",
+        actorId: admin._id,
+        action: "campaign.alternate_selected",
+        entityType: "campaigns",
+        entityId: campaign._id,
+        before: { status: "winner_pending", commitmentHash: campaign.commitmentHash },
+        after: { status: "live", commitmentHash: newCommitmentHash },
+        metadata: { reason: "claim_disqualified", claimId: claim._id },
+      });
+    } else if (campaign.disqualificationPolicy === "end_campaign") {
+      await ctx.db.patch(campaign._id, { status: "cancelled" });
+      await writeAudit(ctx, {
+        actorType: "admin",
+        actorId: admin._id,
+        action: "campaign.cancelled",
+        entityType: "campaigns",
+        entityId: campaign._id,
+        before: { status: "winner_pending" },
+        after: { status: "cancelled" },
         metadata: { reason: "claim_disqualified", claimId: claim._id },
       });
     }
