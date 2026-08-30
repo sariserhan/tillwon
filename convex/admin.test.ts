@@ -220,6 +220,24 @@ describe("admin claim review", () => {
       const archives = await t.run((ctx) => ctx.db.query("winnerArchive").collect());
       expect(archives).toHaveLength(1);
     });
+
+    it("throws CLAIM_DATA_INCOMPLETE rather than publishing a blank field, if the claim or user is missing required data", async () => {
+      // submitClaimDocuments always sets legalName/publicDisplayName, and a
+      // user reaches under_review only after acceptRules sets a region — this
+      // path should be unreachable through normal use. Forcing it directly
+      // is the only way to exercise the guard that replaced a silent `?? ""`
+      // fallback: every other precondition in this mutation throws instead of
+      // degrading, and a blank public archive row deserves the same treatment.
+      const t = convexTest(schema, modules);
+      const { claim, userId } = await readyClaim(t);
+      await t.run((ctx) => ctx.db.patch(userId, { region: undefined }));
+      const admin = await asAdmin(t);
+      await expect(admin.mutation(api.admin.approveClaim, { claimId: claim._id })).rejects.toThrow(
+        "CLAIM_DATA_INCOMPLETE",
+      );
+      const archives = await t.run((ctx) => ctx.db.query("winnerArchive").collect());
+      expect(archives).toHaveLength(0);
+    });
   });
 
   describe("rejectClaim", () => {
@@ -294,6 +312,27 @@ describe("admin claim review", () => {
         ctx.db.query("claimDocuments").withIndex("by_claim", (q) => q.eq("claimId", claim._id)).collect(),
       );
       expect(rows).toHaveLength(3);
+    });
+
+    it("records which document types were purged, and which one kept its storage object, in the audit entry", async () => {
+      const t = convexTest(schema, modules);
+      const { claim } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.approveClaim, { claimId: claim._id });
+      await admin.mutation(api.admin.purgeClaimDocuments, { claimId: claim._id });
+
+      const entries = await t.run((ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_entity", (q) => q.eq("entityType", "claims").eq("entityId", claim._id))
+          .collect(),
+      );
+      const purged = entries.find((e) => e.action === "claim.documents_purged");
+      expect(purged).toBeDefined();
+      expect(purged!.metadata).toMatchObject({
+        purgedTypes: expect.arrayContaining(["photo_id", "proof_of_address", "winner_photo"]),
+        retainedStorageFor: "winner_photo",
+      });
     });
   });
 });

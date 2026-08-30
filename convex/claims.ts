@@ -6,6 +6,7 @@ import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_NAME_LENGTH = 120;
 const ID_AND_ADDRESS_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png"]);
 
@@ -51,7 +52,10 @@ export const getMyClaim = query({
       .query("claimDocuments")
       .withIndex("by_claim", (q) => q.eq("claimId", owned.claim._id))
       .collect();
-    return { claim: owned.claim, documents };
+    // The client only ever reads `.type` (to know which slots are filled);
+    // the raw storage id is dead payload the spec's document-access-control
+    // section says a query like this shouldn't hand out in the first place.
+    return { claim: owned.claim, documents: documents.map((d) => ({ type: d.type })) };
   },
 });
 
@@ -138,10 +142,20 @@ export const submitClaimDocuments = mutation({
       throw new Error("CONSENT_REQUIRED");
     }
 
+    const legalName = args.legalName.trim();
+    if (legalName.length === 0) throw new Error("LEGAL_NAME_REQUIRED");
+    if (legalName.length > MAX_NAME_LENGTH) throw new Error("LEGAL_NAME_TOO_LONG");
+    const publicDisplayNameTrimmed = args.publicDisplayName?.trim();
+    const publicDisplayName =
+      publicDisplayNameTrimmed !== undefined && publicDisplayNameTrimmed.length > 0
+        ? publicDisplayNameTrimmed
+        : legalName;
+    if (publicDisplayName.length > MAX_NAME_LENGTH) throw new Error("PUBLIC_DISPLAY_NAME_TOO_LONG");
+
     const now = Date.now();
     await ctx.db.patch(owned.claim._id, {
-      legalName: args.legalName,
-      publicDisplayName: args.publicDisplayName ?? args.legalName,
+      legalName,
+      publicDisplayName,
       eligibilityAffidavitAcceptedAt: now,
       publicityReleaseAcceptedAt: now,
       status: "under_review",

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AuthErrorBoundary } from "@/app/components/AuthErrorBoundary";
+import { friendlyErrorMessage } from "@/app/lib/convexError";
 
 function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   const detail = useQuery(api.admin.getClaimDetail, { claimId });
@@ -25,7 +26,7 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
       await approve({ claimId });
       router.push("/admin");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Approval failed.");
+      setMessage(friendlyErrorMessage(e, "Approval failed."));
       setBusy(false);
     }
   };
@@ -40,7 +41,7 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
       await reject({ claimId, reason });
       router.push("/admin");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Rejection failed.");
+      setMessage(friendlyErrorMessage(e, "Rejection failed."));
       setBusy(false);
     }
   };
@@ -51,7 +52,7 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
       await purge({ claimId });
       setMessage("Documents purged.");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Purge failed.");
+      setMessage(friendlyErrorMessage(e, "Purge failed."));
     } finally {
       setBusy(false);
     }

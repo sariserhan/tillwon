@@ -97,6 +97,14 @@ export const approveClaim = mutation({
       ctx.db.get(campaign.prizeId),
     ]);
     if (user === null || prize === null) throw new Error("CLAIM_DATA_INCOMPLETE");
+    // submitClaimDocuments always sets these before a claim can reach
+    // under_review, so this should be unreachable in practice — but every
+    // other precondition here throws rather than silently degrading, and a
+    // blank public archive row is exactly the kind of permanent, public
+    // mistake that deserves the same treatment rather than a `?? ""` fallback.
+    if (!claim.legalName || !claim.publicDisplayName || !user.region) {
+      throw new Error("CLAIM_DATA_INCOMPLETE");
+    }
 
     const now = Date.now();
     const revealedTarget = `${secret.winningShard}:${secret.winningCount}`;
@@ -111,10 +119,10 @@ export const approveClaim = mutation({
     await ctx.db.insert("winnerArchive", {
       campaignId: campaign._id,
       claimId: claim._id,
-      legalName: claim.legalName ?? "",
-      publicDisplayName: claim.publicDisplayName ?? claim.legalName ?? "",
+      legalName: claim.legalName,
+      publicDisplayName: claim.publicDisplayName,
       photoStorageId: photo.storageId,
-      region: user.region ?? "",
+      region: user.region,
       prizeTitle: prize.title,
       awardedAt: now,
       revealedTarget,
@@ -197,14 +205,21 @@ export const purgeClaimDocuments = mutation({
       .withIndex("by_claim", (q) => q.eq("claimId", claim._id))
       .collect();
 
+    const purgedTypes: string[] = [];
+    let retainedStorageFor: string | null = null;
     for (const doc of documents) {
       // The winner photo's storage object is kept if winnerArchive references
       // it independently — the archive copy is intentionally permanent and
       // public; deleting the underlying file would break it. The claimDocuments
       // row itself is not archived anywhere, so it's always purged.
       const keepStorage = archive !== null && doc.storageId === archive.photoStorageId;
-      if (!keepStorage) await ctx.storage.delete(doc.storageId);
+      if (keepStorage) {
+        retainedStorageFor = doc.type;
+      } else {
+        await ctx.storage.delete(doc.storageId);
+      }
       await ctx.db.delete(doc._id);
+      purgedTypes.push(doc.type);
     }
 
     await writeAudit(ctx, {
@@ -213,6 +228,7 @@ export const purgeClaimDocuments = mutation({
       action: "claim.documents_purged",
       entityType: "claims",
       entityId: claim._id,
+      metadata: { purgedTypes, retainedStorageFor },
     });
     return null;
   },

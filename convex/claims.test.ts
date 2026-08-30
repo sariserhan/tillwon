@@ -1,10 +1,18 @@
 /// <reference types="vite/client" />
 import { describe, it, expect } from "vitest";
-import { convexTest } from "convex-test";
+import { convexTest, TestConvex } from "convex-test";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
 
 const modules = import.meta.glob("./**/*.*s");
+
+// `ReturnType<typeof convexTest>` resolves convexTest's generic schema
+// parameter to its bare constraint, not this project's actual schema, which
+// silently widens every id/doc type threaded through a helper typed that
+// way — the exact gap that broke `npm run build` in `admin.test.ts`
+// (commit `b3b04ab`). Binding the exported `TestConvex` type to `typeof
+// schema` keeps it concrete.
+type Test = TestConvex<typeof schema>;
 
 /**
  * Seeds a campaign, creates a user, and inserts a spins row + a claims row
@@ -12,7 +20,7 @@ const modules = import.meta.glob("./**/*.*s");
  * running the actual sealed-shard lottery, which is unrelated to what this
  * file tests.
  */
-async function makeClaimant(t: ReturnType<typeof convexTest>, clerkId = "clerk_ada") {
+async function makeClaimant(t: Test, clerkId = "clerk_ada") {
   await t.mutation(internal.seed.seedCampaign, {});
   const as = t.withIdentity({ subject: clerkId, email: `${clerkId}@example.com` });
   const userId = await as.mutation(api.users.ensureUser, {});
@@ -92,8 +100,8 @@ const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
  * exercising the validation logic in claims.ts rather than this library gap.
  */
 async function uploadFile(
-  t: ReturnType<typeof convexTest>,
-  as: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+  t: Test,
+  as: ReturnType<Test["withIdentity"]>,
   reference: string,
   contentType: string,
   bytes: Uint8Array,
@@ -101,7 +109,10 @@ async function uploadFile(
   await as.mutation(api.claims.generateDocumentUploadUrl, { reference });
   const storageId = await t.run(async (ctx) => {
     const id = await ctx.storage.store(new Blob([bytes as BlobPart], { type: contentType }));
-    await ctx.db.patch(id as never, { contentType });
+    // `_storage` isn't part of the app's DataModel, so there's no
+    // type-safe overload of `patch` for it — same double-cast as
+    // `admin.test.ts`'s copy of this test-only backdoor.
+    await ctx.db.patch(id as never, { contentType } as never);
     return id;
   });
   return storageId as string;
@@ -312,7 +323,7 @@ describe("claims", () => {
   });
 
   describe("submitClaimDocuments", () => {
-    async function withAllDocuments(t: ReturnType<typeof convexTest>, clerkId = "clerk_ada") {
+    async function withAllDocuments(t: Test, clerkId = "clerk_ada") {
       const ctx = await makeClaimant(t, clerkId);
       for (const type of ["photo_id", "proof_of_address", "winner_photo"] as const) {
         const storageId = await uploadFile(t, ctx.as, ctx.reference, "image/png", pngBytes);
@@ -383,5 +394,74 @@ describe("claims", () => {
       const result = await ctx.as.query(api.claims.getMyClaim, { reference: ctx.reference });
       expect(result!.claim.publicDisplayName).toBe("A.L.");
     });
+
+    it("trims legal and public display names, and falls back to the trimmed legal name when the display name is blank", async () => {
+      const t = convexTest(schema, modules);
+      const ctx = await withAllDocuments(t);
+      await ctx.as.mutation(api.claims.submitClaimDocuments, {
+        reference: ctx.reference,
+        legalName: "  Ada Lovelace  ",
+        publicDisplayName: "   ",
+        affidavitAccepted: true,
+        publicityReleaseAccepted: true,
+      });
+      const result = await ctx.as.query(api.claims.getMyClaim, { reference: ctx.reference });
+      expect(result!.claim.legalName).toBe("Ada Lovelace");
+      expect(result!.claim.publicDisplayName).toBe("Ada Lovelace");
+    });
+
+    it("rejects a whitespace-only legal name", async () => {
+      const t = convexTest(schema, modules);
+      const ctx = await withAllDocuments(t);
+      await expect(
+        ctx.as.mutation(api.claims.submitClaimDocuments, {
+          reference: ctx.reference,
+          legalName: "   ",
+          affidavitAccepted: true,
+          publicityReleaseAccepted: true,
+        }),
+      ).rejects.toThrow("LEGAL_NAME_REQUIRED");
+    });
+
+    it("rejects a legal name over the length cap", async () => {
+      const t = convexTest(schema, modules);
+      const ctx = await withAllDocuments(t);
+      await expect(
+        ctx.as.mutation(api.claims.submitClaimDocuments, {
+          reference: ctx.reference,
+          legalName: "A".repeat(121),
+          affidavitAccepted: true,
+          publicityReleaseAccepted: true,
+        }),
+      ).rejects.toThrow("LEGAL_NAME_TOO_LONG");
+    });
+
+    it("rejects a public display name over the length cap", async () => {
+      const t = convexTest(schema, modules);
+      const ctx = await withAllDocuments(t);
+      await expect(
+        ctx.as.mutation(api.claims.submitClaimDocuments, {
+          reference: ctx.reference,
+          legalName: "Ada Lovelace",
+          publicDisplayName: "A".repeat(121),
+          affidavitAccepted: true,
+          publicityReleaseAccepted: true,
+        }),
+      ).rejects.toThrow("PUBLIC_DISPLAY_NAME_TOO_LONG");
+    });
+  });
+
+  it("getMyClaim returns only the document type, never the raw storage id", async () => {
+    const t = convexTest(schema, modules);
+    const { as, reference } = await makeClaimant(t);
+    const storageId = await uploadFile(t, as, reference, "image/png", pngBytes);
+    await as.mutation(api.claims.registerUploadedDocument, {
+      reference,
+      type: "winner_photo",
+      storageId: storageId as never,
+    });
+    const result = await as.query(api.claims.getMyClaim, { reference });
+    expect(result!.documents[0]).toEqual({ type: "winner_photo" });
+    expect(result!.documents[0]).not.toHaveProperty("storageId");
   });
 });

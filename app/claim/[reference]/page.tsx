@@ -229,7 +229,10 @@ function ClaimForm({ reference }: { reference: string }) {
 
 export default function ClaimPage({ params }: { params: Promise<{ reference: string }> }) {
   const { reference } = use(params);
-  const shown = decodeURIComponent(reference).toUpperCase().slice(0, 32);
+  // Next's App Router already decodes route params — re-decoding here threw
+  // URIError on a reference containing a literal `%`, with no boundary to
+  // catch it.
+  const shown = reference.toUpperCase().slice(0, 32);
   const { isAuthenticated, isLoading } = useConvexAuth();
 
   return (
