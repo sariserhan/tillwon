@@ -15,6 +15,9 @@ function CampaignsSection() {
         Campaigns{" "}
         <Link href="/admin/campaigns/new" style={{ fontSize: "0.6em" }}>
           + New campaign
+        </Link>{" "}
+        <Link href="/admin/users" style={{ fontSize: "0.6em" }}>
+          Manage users
         </Link>
       </h1>
       {campaigns.length === 0 ? (
