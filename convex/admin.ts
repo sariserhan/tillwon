@@ -202,6 +202,61 @@ export const rejectClaim = mutation({
       after: { status: "disqualified" },
       metadata: { reason: args.reason },
     });
+
+    // "resume_campaign" is the only disqualification policy implemented so
+    // far. Product policy (resolved 2026-08-06): a disqualified claimant
+    // returns the campaign to live with the sealed target untouched, and
+    // the next entry to reach it wins — so campaignSecrets itself is never
+    // written here. select_alternate and end_campaign need their own design
+    // (what "select an alternate winner" means mechanically, what ending a
+    // campaign mid-run does) before they can be implemented; campaigns
+    // configured with either keep today's existing behavior (frozen in
+    // winner_pending) until that happens.
+    const campaign = await ctx.db.get(claim.campaignId);
+    if (campaign !== null && campaign.disqualificationPolicy === "resume_campaign") {
+      const secret = await ctx.db
+        .query("campaignSecrets")
+        .withIndex("by_campaign", (q) => q.eq("campaignId", campaign._id))
+        .unique();
+      if (secret === null) throw new Error("CAMPAIGN_NOT_ACTIVATED");
+
+      // A win requires the winning shard's running spin count to land
+      // exactly on winningCount (spins.ts) — that count never resets and
+      // only ever grows, so the disqualified spin that hit it has already
+      // permanently consumed the one moment the sealed target was
+      // reachable. Un-consuming that one increment is what makes "the next
+      // entry to reach it wins" literally true rather than a target nobody
+      // can ever win again. This is safe precisely because spinExecute
+      // refuses to run against any campaign that isn't "live" (checked
+      // above this campaign was "winner_pending" the entire time), so no
+      // other spin could have touched this shard's count since.
+      const winningShardRow = await ctx.db
+        .query("spinShards")
+        .withIndex("by_campaign_shard", (q) =>
+          q.eq("campaignId", campaign._id).eq("shard", secret.winningShard),
+        )
+        .unique();
+      if (winningShardRow === null || winningShardRow.count !== secret.winningCount) {
+        throw new Error("SHARD_COUNT_INVARIANT_VIOLATED");
+      }
+      await ctx.db.patch(winningShardRow._id, { count: winningShardRow.count - 1 });
+
+      await ctx.db.patch(campaign._id, {
+        status: "live",
+        winningSpinId: undefined,
+        potentialWinnerUserId: undefined,
+      });
+      await writeAudit(ctx, {
+        actorType: "admin",
+        actorId: admin._id,
+        action: "campaign.resumed",
+        entityType: "campaigns",
+        entityId: campaign._id,
+        before: { status: "winner_pending" },
+        after: { status: "live" },
+        metadata: { reason: "claim_disqualified", claimId: claim._id },
+      });
+    }
     return null;
   },
 });

@@ -309,18 +309,84 @@ describe("admin claim review", () => {
   });
 
   describe("rejectClaim", () => {
-    it("marks the claim disqualified and leaves the campaign untouched", async () => {
+    it("marks the claim disqualified and, under resume_campaign (the seed campaign's policy), resumes the campaign to live with the sealed target untouched", async () => {
       const t = convexTest(schema, modules);
       const { claim, campaignId } = await readyClaim(t);
+      const secretBefore = await t.run((ctx) =>
+        ctx.db.query("campaignSecrets").withIndex("by_campaign", (q) => q.eq("campaignId", campaignId)).unique(),
+      );
       const admin = await asAdmin(t);
       await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "ID did not match" });
 
-      const [updatedClaim, campaign] = await t.run(async (ctx) => [
+      const [updatedClaim, campaign, secretAfter] = await t.run(async (ctx) => [
         await ctx.db.get(claim._id),
         await ctx.db.get(campaignId),
+        await ctx.db
+          .query("campaignSecrets")
+          .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
+          .unique(),
       ]);
       expect(updatedClaim!.status).toBe("disqualified");
+      expect(campaign!.status).toBe("live");
+      expect(campaign).not.toHaveProperty("winningSpinId");
+      expect(campaign).not.toHaveProperty("potentialWinnerUserId");
+      // The sealed target itself is the thing product policy says must
+      // survive a resume untouched — same shard/count/nonce/hash as before.
+      expect(secretAfter).toEqual(secretBefore);
+
+      const campaignAuditEntries = await t.run((ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+          .collect(),
+      );
+      const resumed = campaignAuditEntries.find((e) => e.action === "campaign.resumed");
+      expect(resumed).toBeDefined();
+      expect(resumed!.before).toMatchObject({ status: "winner_pending" });
+      expect(resumed!.after).toMatchObject({ status: "live" });
+    });
+
+    it("lets a new spin win the resumed campaign against the same sealed target", async () => {
+      const t = convexTest(schema, modules);
+      const { claim, campaignId, reference: firstReference } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
+
+      const asBob = t.withIdentity({ subject: "clerk_bob", email: "bob@example.com", emailVerified: true });
+      const bobId = await asBob.mutation(api.users.ensureUser, {});
+      await t.run((ctx) => ctx.db.patch(bobId, { country: "US", region: "NY", birthDate: "1990-01-01" }));
+      await asBob.mutation(api.rules.acceptRules, {});
+
+      const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+      const spin = await asBob.mutation(api.spins.spinExecute, {
+        idempotencyKey: "bob-win",
+        deviceHash: "test",
+      });
+      randomSpy.mockRestore();
+
+      expect(spin.isPotentialWinner).toBe(true);
+      expect(spin.claimReference).toBe(firstReference);
+
+      const campaign = await t.run((ctx) => ctx.db.get(campaignId));
       expect(campaign!.status).toBe("winner_pending");
+    });
+
+    it("does not touch the campaign when disqualifying a claim under a policy other than resume_campaign", async () => {
+      const t = convexTest(schema, modules);
+      const { claim, campaignId } = await readyClaim(t);
+      await t.run((ctx) => ctx.db.patch(campaignId, { disqualificationPolicy: "end_campaign" }));
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "no match" });
+
+      const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+      expect(campaign!.status).toBe("winner_pending");
+      const campaignAuditEntries = await t.run((ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+          .collect(),
+      );
+      expect(campaignAuditEntries.some((e) => e.action === "campaign.resumed")).toBe(false);
     });
 
     it("refuses a second rejection of an already-resolved claim", async () => {
