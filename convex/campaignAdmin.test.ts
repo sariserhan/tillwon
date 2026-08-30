@@ -338,3 +338,96 @@ describe("getCampaignDetail", () => {
     ).rejects.toThrow("NOT_ADMIN");
   });
 });
+
+describe("activate", () => {
+  it("seals the target and flips the campaign to live", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await admin.action(api.campaignAdmin.activate, { campaignId });
+
+    const [campaign, secret] = await t.run(async (ctx) => [
+      await ctx.db.get(campaignId),
+      await ctx.db
+        .query("campaignSecrets")
+        .withIndex("by_campaign", (q) => q.eq("campaignId", campaignId))
+        .unique(),
+    ]);
+    expect(campaign!.status).toBe("live");
+    expect(campaign!.commitmentHash).not.toBe("PENDING_ACTIVATION");
+    expect(secret).not.toBeNull();
+  });
+
+  it("refuses to activate a campaign that isn't a draft", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    await admin.action(api.campaignAdmin.activate, { campaignId });
+
+    await expect(admin.action(api.campaignAdmin.activate, { campaignId })).rejects.toThrow(
+      "CAMPAIGN_NOT_DRAFT",
+    );
+  });
+
+  it("refuses activation while another campaign is already live, end to end", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const firstId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    await admin.action(api.campaignAdmin.activate, { campaignId: firstId });
+    const first = (await t.run((ctx) => ctx.db.get(firstId)))!;
+
+    const secondId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      title: "Second Giveaway",
+      prize: { kind: "existing", prizeId: first.prizeId },
+    });
+
+    await expect(admin.action(api.campaignAdmin.activate, { campaignId: secondId })).rejects.toThrow(
+      "ANOTHER_CAMPAIGN_ACTIVE",
+    );
+
+    const second = await t.run((ctx) => ctx.db.get(secondId));
+    expect(second!.status).toBe("draft");
+  });
+
+  it("writes an audit entry only on a successful activation, never on a failed attempt", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    await admin.action(api.campaignAdmin.activate, { campaignId });
+    await expect(admin.action(api.campaignAdmin.activate, { campaignId })).rejects.toThrow();
+
+    const entries = await t.run((ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+        .collect(),
+    );
+    expect(entries.filter((e) => e.action === "campaign.activated")).toHaveLength(1);
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(as.action(api.campaignAdmin.activate, { campaignId })).rejects.toThrow("NOT_ADMIN");
+  });
+});

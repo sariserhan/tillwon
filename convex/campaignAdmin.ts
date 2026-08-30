@@ -1,5 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { requireAdmin } from "./lib/admin.ts";
 import { writeAudit } from "./lib/audit.ts";
 import { resolveTier, formatOdds } from "./lib/tiers.ts";
@@ -293,5 +294,55 @@ export const getCampaignDetail = query({
       prizeTitle: prize?.title ?? null,
       prizeValueCents: prize?.estimatedRetailValue ?? null,
     };
+  },
+});
+
+export const checkActivatable = internalQuery({
+  args: { campaignId: v.id("campaigns") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    if (campaign.status !== "draft") throw new Error("CAMPAIGN_NOT_DRAFT");
+    return null;
+  },
+});
+
+export const recordActivationAudit = internalMutation({
+  args: { campaignId: v.id("campaigns") },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "campaign.activated",
+      entityType: "campaigns",
+      entityId: args.campaignId,
+      before: { status: "draft" },
+      after: { status: "live", commitmentHash: "sealed" },
+    });
+    return null;
+  },
+});
+
+/**
+ * The admin-facing entry point. Named `activate`, not `activateCampaign` —
+ * winnerEngine.ts already exports an internalAction called activateCampaign, and
+ * this calls straight into it rather than duplicating its randomness-drawing
+ * logic. checkActivatable is a fast-fail UX nicety only, not the exclusivity
+ * guarantee — that's sealTarget's own authoritative, transactional check (Task 1).
+ * A request that passes checkActivatable can still legitimately fail inside
+ * activateCampaign/sealTarget if another activation won the race in between —
+ * that's the guarantee working as intended, not a bug to route around here.
+ */
+export const activate = action({
+  args: { campaignId: v.id("campaigns") },
+  handler: async (ctx, args): Promise<null> => {
+    await ctx.runQuery(internal.campaignAdmin.checkActivatable, { campaignId: args.campaignId });
+    await ctx.runAction(internal.winnerEngine.activateCampaign, { campaignId: args.campaignId });
+    await ctx.runMutation(internal.campaignAdmin.recordActivationAudit, {
+      campaignId: args.campaignId,
+    });
+    return null;
   },
 });

@@ -140,10 +140,11 @@ export const activationParameters = internalQuery({
  * Internal, and it takes no odds parameters. A caller-supplied shardCount would
  * let anyone seal a campaign at odds of their choosing (`shardCount: 1` makes the
  * next spin win) or seal a target outside the range spinExecute assigns, making
- * the campaign unwinnable. Both come from the campaign document instead. There is
- * no admin UI yet, so activation happens through `npx convex run`, which reaches
- * internal functions with deploy credentials — the right trust level for sealing
- * a prize.
+ * the campaign unwinnable. Both come from the campaign document instead.
+ * The admin-facing entry point is campaignAdmin.activate, which requireAdmin-gates
+ * the caller before reaching here — this function itself stays internal-only and
+ * trusts its caller completely, the same way every other internalAction/internalMutation
+ * in this codebase does.
  */
 export const activateCampaign = internalAction({
   args: { campaignId: v.id("campaigns") },
