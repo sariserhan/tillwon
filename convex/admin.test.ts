@@ -1,11 +1,20 @@
 /// <reference types="vite/client" />
 import { describe, it, expect, vi } from "vitest";
-import { convexTest } from "convex-test";
+import { convexTest, TestConvex } from "convex-test";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
 import { commitmentFor } from "./winnerEngine";
 
 const modules = import.meta.glob("./**/*.*s");
+
+// `ReturnType<typeof convexTest>` (used elsewhere in this repo's test files)
+// resolves `convexTest`'s generic schema parameter to its bare constraint,
+// not this project's actual schema, which silently widens every id/doc type
+// threaded through a helper typed that way (e.g. `ctx.db.get()` on an id
+// that crossed a `readyClaim(t: ReturnType<typeof convexTest>)` boundary
+// returns a union of every table's document instead of the real one).
+// Binding the exported `TestConvex` type to `typeof schema` keeps it concrete.
+type Test = TestConvex<typeof schema>;
 
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -21,15 +30,15 @@ const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
  * `generateDocumentUploadUrl` first so the ownership check it gates is
  * exercised the same as the brief intends.
  */
-async function uploadFile(
-  t: ReturnType<typeof convexTest>,
-  as: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
-  reference: string,
-) {
+async function uploadFile(t: Test, as: ReturnType<Test["withIdentity"]>, reference: string) {
   await as.mutation(api.claims.generateDocumentUploadUrl, { reference });
   const storageId = await t.run(async (ctx) => {
     const id = await ctx.storage.store(new Blob([pngBytes as BlobPart], { type: "image/png" }));
-    await ctx.db.patch(id as never, { contentType: "image/png" });
+    // `_storage` isn't part of the app's DataModel, so there's no type-safe
+    // overload of `patch` for it — same double-cast `claims.test.ts`'s own
+    // copy of this test-only backdoor would also need once `t` (below) is
+    // typed against the real schema instead of the erased default.
+    await ctx.db.patch(id as never, { contentType: "image/png" } as never);
     return id;
   });
   return storageId as string;
@@ -40,7 +49,7 @@ async function uploadFile(
  * force a claimant to win it, submit all three documents. Everything this
  * file tests happens after this point.
  */
-async function readyClaim(t: ReturnType<typeof convexTest>) {
+async function readyClaim(t: Test) {
   await t.mutation(internal.seed.seedCampaign, {});
   const campaign = await t.run((ctx) => ctx.db.query("campaigns").first());
   const nonce = "deadbeef";
@@ -90,16 +99,16 @@ async function readyClaim(t: ReturnType<typeof convexTest>) {
     publicityReleaseAccepted: true,
   });
 
-  const claim = await t.run((ctx) =>
-    ctx.db
+  const claim = await t.run(async (ctx) => {
+    return ctx.db
       .query("claims")
       .withIndex("by_reference", (q) => q.eq("claimReference", reference))
-      .unique(),
-  );
+      .unique();
+  });
   return { t, as, userId, campaignId: campaign!._id, claim: claim!, reference };
 }
 
-async function asAdmin(t: ReturnType<typeof convexTest>) {
+async function asAdmin(t: Test) {
   const as = t.withIdentity({ subject: "clerk_admin", email: "admin@example.com" });
   const userId = await as.mutation(api.users.ensureUser, {});
   await t.run((ctx) => ctx.db.patch(userId, { role: "admin" }));
