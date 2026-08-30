@@ -224,9 +224,40 @@ export default defineSchema({
     ),
     claimDeadline: v.number(),
     publicityReleaseAcceptedAt: v.optional(v.number()),
+    legalName: v.optional(v.string()),
+    publicDisplayName: v.optional(v.string()),
+    eligibilityAffidavitAcceptedAt: v.optional(v.number()),
   })
     .index("by_reference", ["claimReference"])
     .index("by_user", ["userId"])
     .index("by_campaign", ["campaignId"])
     .index("by_spin", ["spinId"]),
+
+  claimDocuments: defineTable({
+    claimId: v.id("claims"),
+    userId: v.id("users"), // denormalized owner check, avoids a join on every access
+    type: v.union(
+      v.literal("photo_id"),
+      v.literal("proof_of_address"),
+      v.literal("winner_photo"),
+    ),
+    storageId: v.id("_storage"),
+    uploadedAt: v.number(),
+  })
+    .index("by_claim", ["claimId"])
+    .index("by_claim_type", ["claimId", "type"]),
+
+  winnerArchive: defineTable({
+    campaignId: v.id("campaigns"),
+    claimId: v.id("claims"),
+    legalName: v.string(),
+    publicDisplayName: v.string(),
+    photoStorageId: v.id("_storage"),
+    region: v.string(),
+    prizeTitle: v.string(),
+    awardedAt: v.number(),
+    revealedTarget: v.string(), // "<winningShard>:<winningCount>"
+    revealedNonce: v.string(),
+    commitmentHash: v.string(),
+  }).index("by_campaign", ["campaignId"]),
 });
