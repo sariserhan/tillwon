@@ -59,6 +59,27 @@ export const sealTarget = internalMutation({
       .unique();
     if (existing !== null) throw new Error("TARGET_ALREADY_SEALED");
 
+    // Only one campaign may ever be live or winner_pending at a time. This is the
+    // authoritative, transactional check — not a pre-check some caller runs before
+    // reaching here — so two concurrent activation attempts can't both succeed:
+    // whichever commits first wins, and the loser re-reads state that now includes
+    // the winner's write and fails this check. Excluding args.campaignId itself
+    // matters: in the existing seed-then-activate CLI flow, the campaign being
+    // sealed is already status "live" (set by seedCampaign) at the moment this
+    // runs, so an unqualified check would make that flow fail against itself.
+    const liveCampaigns = await ctx.db
+      .query("campaigns")
+      .withIndex("by_status", (q) => q.eq("status", "live"))
+      .collect();
+    const pendingCampaigns = await ctx.db
+      .query("campaigns")
+      .withIndex("by_status", (q) => q.eq("status", "winner_pending"))
+      .collect();
+    const anotherActive = [...liveCampaigns, ...pendingCampaigns].some(
+      (c) => c._id !== args.campaignId,
+    );
+    if (anotherActive) throw new Error("ANOTHER_CAMPAIGN_ACTIVE");
+
     await ctx.db.insert("campaignSecrets", {
       campaignId: args.campaignId,
       winningShard: args.winningShard,
@@ -74,7 +95,14 @@ export const sealTarget = internalMutation({
       });
     }
 
-    await ctx.db.patch(args.campaignId, { commitmentHash: args.commitmentHash });
+    // Sealed, therefore exclusively playable — both belong in the one transaction
+    // that actually enforces them, not split across a pre-check and a separate
+    // write. Backward-compatible with the existing CLI flow: seedCampaign already
+    // sets status "live" before this runs, so re-patching it to "live" is a no-op.
+    await ctx.db.patch(args.campaignId, {
+      commitmentHash: args.commitmentHash,
+      status: "live",
+    });
 
     // The hash is logged; the target is not. The trail must prove a target existed
     // without disclosing it.

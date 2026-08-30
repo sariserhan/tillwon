@@ -95,6 +95,85 @@ describe("sealTarget", () => {
     expect(secrets).toHaveLength(0);
     expect(shards).toHaveLength(0);
   });
+
+  it("flips a draft campaign to live when sealing it", async () => {
+    const campaignId = await t.run(async (ctx) => {
+      const c = await ctx.db.query("campaigns").first();
+      await ctx.db.patch(c!._id, { status: "draft" });
+      return c!._id;
+    });
+
+    await t.mutation(internal.winnerEngine.sealTarget, {
+      campaignId,
+      winningShard: 3,
+      winningCount: 7,
+      nonce: "deadbeef",
+      commitmentHash: await commitmentFor(3, 7, "deadbeef"),
+    });
+
+    const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+    expect(campaign!.status).toBe("live");
+  });
+
+  it("refuses to seal a second campaign while another is already live or winner_pending, and writes nothing", async () => {
+    const firstCampaignId = await t.run(async (ctx) => {
+      const c = await ctx.db.query("campaigns").first();
+      return c!._id;
+    });
+
+    await t.mutation(internal.winnerEngine.sealTarget, {
+      campaignId: firstCampaignId,
+      winningShard: 3,
+      winningCount: 7,
+      nonce: "deadbeef",
+      commitmentHash: await commitmentFor(3, 7, "deadbeef"),
+    });
+
+    const secondCampaignId = await t.run(async (ctx) => {
+      const first = (await ctx.db.get(firstCampaignId))!;
+      return await ctx.db.insert("campaigns", {
+        slug: "second-campaign",
+        title: "Second campaign",
+        description: "d",
+        sponsorId: first.sponsorId,
+        prizeId: first.prizeId,
+        status: "draft",
+        startAt: Date.now(),
+        dailySpins: 10,
+        resetTimezone: "UTC",
+        resetHour: 0,
+        reelColumns: 3,
+        projectedVolume: 1000,
+        oddsDenominator: 1000,
+        shardCount: 16,
+        commitmentHash: "PENDING_ACTIVATION",
+        eligibleCountries: ["US"],
+        eligibleRegions: ["NY"],
+        minimumAge: 18,
+        requireEmailVerification: true,
+        activeRulesVersion: 1,
+        disqualificationPolicy: "resume_campaign",
+      });
+    });
+
+    await expect(
+      t.mutation(internal.winnerEngine.sealTarget, {
+        campaignId: secondCampaignId,
+        winningShard: 1,
+        winningCount: 1,
+        nonce: "cafebabe",
+        commitmentHash: await commitmentFor(1, 1, "cafebabe"),
+      }),
+    ).rejects.toThrow("ANOTHER_CAMPAIGN_ACTIVE");
+
+    const { secondCampaign, secrets } = await t.run(async (ctx) => ({
+      secondCampaign: await ctx.db.get(secondCampaignId),
+      secrets: await ctx.db.query("campaignSecrets").collect(),
+    }));
+    expect(secondCampaign!.status).toBe("draft");
+    // Only the first campaign's secret exists — the second seal attempt wrote nothing.
+    expect(secrets).toHaveLength(1);
+  });
 });
 
 describe("activateCampaign", () => {
