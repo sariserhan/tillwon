@@ -68,6 +68,13 @@ export const getClaimDetail = query({
  * uses. Internal because nothing outside that HTTP action should ever call
  * it directly; a bare storageId is not itself fetchable by a client, but
  * there's no reason to expose it as a public query either.
+ *
+ * Returns the *sniffed* content type stored on the row (finalizeDocumentRegistration
+ * in claims.ts), never `_storage`'s own metadata — that field is the
+ * client's own declared upload header, and serving a file back with
+ * whatever Content-Type an attacker chose is a stored-XSS path (a payload
+ * that sniffs as a valid PNG could still be uploaded declaring
+ * `Content-Type: text/html`).
  */
 export const getDocumentForServing = internalQuery({
   args: { claimId: v.id("claims"), type: documentType },
@@ -78,8 +85,7 @@ export const getDocumentForServing = internalQuery({
       .withIndex("by_claim_type", (q) => q.eq("claimId", args.claimId).eq("type", args.type))
       .unique();
     if (doc === null) throw new Error("DOCUMENT_NOT_FOUND");
-    const metadata = await ctx.db.system.get(doc.storageId);
-    return { storageId: doc.storageId, contentType: metadata?.contentType ?? null };
+    return { storageId: doc.storageId, contentType: doc.sniffedType ?? "application/octet-stream" };
   },
 });
 

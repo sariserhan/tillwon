@@ -19,6 +19,33 @@ const ERROR_STATUS: Record<string, number> = {
   DOCUMENT_NOT_FOUND: 404,
 };
 
+const EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "application/pdf": "pdf",
+};
+
+/**
+ * Defense in depth beyond serving the sniffed (not client-declared)
+ * Content-Type: `nosniff` stops the browser from second-guessing it,
+ * `Content-Disposition: attachment` asks it to download rather than render
+ * inline, and the CSP/sandbox pair means even a file that somehow still
+ * carried executable content couldn't run script in this response's
+ * context. None of this is a substitute for serving an honest
+ * Content-Type — it's a second layer in case that ever regresses.
+ */
+function documentHeaders(contentType: string) {
+  const extension = EXTENSIONS[contentType] ?? "bin";
+  return {
+    ...CORS_HEADERS,
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+    "Content-Disposition": `attachment; filename="document.${extension}"`,
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+  };
+}
+
 /**
  * The only way a verification document's bytes are ever served. Replaces
  * `storage.getUrl()`, which returns an unauthenticated, non-expiring bearer
@@ -38,7 +65,7 @@ http.route({
       return new Response("Bad request", { status: 400, headers: CORS_HEADERS });
     }
 
-    let document: { storageId: Id<"_storage">; contentType: string | null };
+    let document: { storageId: Id<"_storage">; contentType: string };
     try {
       document = await ctx.runQuery(internal.admin.getDocumentForServing, {
         claimId: claimId as Id<"claims">,
@@ -55,14 +82,7 @@ http.route({
       return new Response("Not found", { status: 404, headers: CORS_HEADERS });
     }
 
-    return new Response(blob, {
-      status: 200,
-      headers: {
-        ...CORS_HEADERS,
-        "Content-Type": document.contentType ?? "application/octet-stream",
-        "Cache-Control": "no-store",
-      },
-    });
+    return new Response(blob, { status: 200, headers: documentHeaders(document.contentType) });
   }),
 });
 

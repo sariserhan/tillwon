@@ -167,6 +167,37 @@ describe("admin claim review", () => {
       ).rejects.toThrow("NOT_ADMIN");
     });
 
+    it("serves the row's sniffed content type, never `_storage`'s own (client-declared) metadata, even when they disagree", async () => {
+      // The vulnerability this guards: `_storage`'s own metadata.contentType
+      // is the client's own declared upload header — a caller can lie
+      // ("Content-Type: text/html") on a file that still sniffs as a real
+      // PNG. If getDocumentForServing ever served that lie back, an admin
+      // opening the "document" could get HTML/script content instead of an
+      // image, from an origin that inherits the admin session (stored XSS).
+      // finalizeDocumentRegistration only ever stores the sniffed type on
+      // the claimDocuments row, so simulate `_storage` disagreeing after the
+      // fact (as if the upload had declared something else) and confirm the
+      // served type still comes from the row, not from `_storage`.
+      const t = convexTest(schema, modules);
+      const { claim } = await readyClaim(t);
+      const admin = await asAdmin(t);
+
+      const doc = await t.run((ctx) =>
+        ctx.db
+          .query("claimDocuments")
+          .withIndex("by_claim_type", (q) => q.eq("claimId", claim._id).eq("type", "winner_photo"))
+          .unique(),
+      );
+      expect(doc!.sniffedType).toBe("image/png");
+      await t.run((ctx) => ctx.db.patch(doc!.storageId as never, { contentType: "text/html" } as never));
+
+      const result = await admin.query(internal.admin.getDocumentForServing, {
+        claimId: claim._id,
+        type: "winner_photo",
+      });
+      expect(result.contentType).toBe("image/png");
+    });
+
     it("throws DOCUMENT_NOT_FOUND for a document type never uploaded", async () => {
       const t = convexTest(schema, modules);
       const { claim } = await readyClaim(t);

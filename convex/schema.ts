@@ -243,6 +243,15 @@ export default defineSchema({
     ),
     storageId: v.id("_storage"),
     uploadedAt: v.number(),
+    // The type identified from the file's own bytes at registration time
+    // (convex/lib/fileSniff.ts), not the client-declared upload
+    // Content-Type header. This, not `_storage`'s own (attacker-controlled)
+    // metadata, is what the /documents HTTP action serves the file as —
+    // serving a client-chosen Content-Type back verbatim is a stored-XSS
+    // path (a file sniffed as a valid PNG could still be uploaded with
+    // `Content-Type: text/html`). Optional only for schema additivity —
+    // every row inserted by finalizeDocumentRegistration sets it.
+    sniffedType: v.optional(v.string()),
   })
     .index("by_claim", ["claimId"])
     .index("by_claim_type", ["claimId", "type"])

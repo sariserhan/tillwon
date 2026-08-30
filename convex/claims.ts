@@ -152,6 +152,11 @@ export const finalizeDocumentRegistration = internalMutation({
       type: args.type,
       storageId: args.storageId,
       uploadedAt: Date.now(),
+      // The sniffed (byte-verified) type, not the client-declared upload
+      // header — this is what /documents (convex/http.ts) serves the file
+      // back as, so a mismatched, attacker-chosen Content-Type never
+      // reaches the response.
+      sniffedType: args.sniffedType,
     });
     await writeAudit(ctx, {
       actorType: "user",
