@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as balances from "../balances.js";
+import type * as campaignAdmin from "../campaignAdmin.js";
 import type * as campaigns from "../campaigns.js";
 import type * as claims from "../claims.js";
 import type * as eligibility from "../eligibility.js";
@@ -38,6 +39,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   balances: typeof balances;
+  campaignAdmin: typeof campaignAdmin;
   campaigns: typeof campaigns;
   claims: typeof claims;
   eligibility: typeof eligibility;
