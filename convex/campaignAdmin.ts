@@ -1,4 +1,4 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAdmin } from "./lib/admin.ts";
 import { writeAudit } from "./lib/audit.ts";
@@ -230,5 +230,68 @@ export const createDraftCampaign = mutation({
     });
 
     return campaignId;
+  },
+});
+
+export const listPrizes = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const prizes = await ctx.db.query("prizes").collect();
+    return await Promise.all(
+      prizes.map(async (prize) => {
+        const sponsor = await ctx.db.get(prize.sponsorId);
+        return {
+          _id: prize._id,
+          title: prize.title,
+          estimatedRetailValue: prize.estimatedRetailValue,
+          sponsorName: sponsor?.name ?? null,
+        };
+      }),
+    );
+  },
+});
+
+export const listCampaigns = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const campaigns = await ctx.db.query("campaigns").collect();
+    const sorted = campaigns.sort((a, b) => b._creationTime - a._creationTime);
+    return await Promise.all(
+      sorted.map(async (campaign) => {
+        const [sponsor, prize] = await Promise.all([
+          ctx.db.get(campaign.sponsorId),
+          ctx.db.get(campaign.prizeId),
+        ]);
+        return {
+          _id: campaign._id,
+          slug: campaign.slug,
+          title: campaign.title,
+          status: campaign.status,
+          sponsorName: sponsor?.name ?? null,
+          prizeTitle: prize?.title ?? null,
+        };
+      }),
+    );
+  },
+});
+
+export const getCampaignDetail = query({
+  args: { campaignId: v.id("campaigns") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    const [sponsor, prize] = await Promise.all([
+      ctx.db.get(campaign.sponsorId),
+      ctx.db.get(campaign.prizeId),
+    ]);
+    return {
+      campaign,
+      sponsorName: sponsor?.name ?? null,
+      prizeTitle: prize?.title ?? null,
+      prizeValueCents: prize?.estimatedRetailValue ?? null,
+    };
   },
 });

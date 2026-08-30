@@ -260,3 +260,81 @@ describe("createDraftCampaign", () => {
     expect(entries.some((e) => e.action === "campaign.created")).toBe(true);
   });
 });
+
+describe("listPrizes", () => {
+  it("lists prizes with their sponsor name", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const prizes = await admin.query(api.campaignAdmin.listPrizes, {});
+    expect(prizes).toHaveLength(1);
+    expect(prizes[0]).toMatchObject({ title: "$100 Gift Card", sponsorName: "Acme Corp" });
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(as.query(api.campaignAdmin.listPrizes, {})).rejects.toThrow("NOT_ADMIN");
+  });
+});
+
+describe("listCampaigns", () => {
+  it("lists campaigns newest first with sponsor/prize display fields", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const firstId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const first = (await t.run((ctx) => ctx.db.get(firstId)))!;
+    const secondId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      title: "Second Giveaway",
+      prize: { kind: "existing", prizeId: first.prizeId },
+    });
+
+    const rows = await admin.query(api.campaignAdmin.listCampaigns, {});
+    expect(rows).toHaveLength(2);
+    expect(rows[0]._id).toBe(secondId);
+    expect(rows[0]).toMatchObject({
+      status: "draft",
+      sponsorName: "Acme Corp",
+      prizeTitle: "$100 Gift Card",
+    });
+  });
+});
+
+describe("getCampaignDetail", () => {
+  it("returns the full campaign plus sponsor/prize display fields", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    const detail = await admin.query(api.campaignAdmin.getCampaignDetail, { campaignId });
+    expect(detail.campaign.title).toBe("Fall Giveaway");
+    expect(detail.sponsorName).toBe("Acme Corp");
+    expect(detail.prizeTitle).toBe("$100 Gift Card");
+    expect(detail.prizeValueCents).toBe(10_000);
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(
+      as.query(api.campaignAdmin.getCampaignDetail, { campaignId }),
+    ).rejects.toThrow("NOT_ADMIN");
+  });
+});
