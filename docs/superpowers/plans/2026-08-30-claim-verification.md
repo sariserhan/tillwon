@@ -32,6 +32,7 @@
 - `convex/admin.test.ts`
 - `convex/winners.ts` — `listWinners`
 - `convex/winners.test.ts`
+- `app/admin/AdminGate.tsx` — shared error-boundary gate for the admin pages
 - `app/admin/page.tsx` — pending-claims list
 - `app/admin/claims/[claimId]/page.tsx` — claim detail/review
 
@@ -1675,15 +1676,46 @@ git commit -m "feat: wire the claim page to real document upload and submission"
 ### Task 6: Admin review UI
 
 **Files:**
-- Create: `app/admin/page.tsx`, `app/admin/claims/[claimId]/page.tsx`
+- Create: `app/admin/AdminGate.tsx`, `app/admin/page.tsx`, `app/admin/claims/[claimId]/page.tsx`
 
 **Interfaces:**
 - Consumes: `api.admin.listPendingClaims`, `api.admin.getClaimDetail`, `api.admin.approveClaim`, `api.admin.rejectClaim`, `api.admin.purgeClaimDocuments`
-- Produces: nothing downstream
+- Produces: `AdminGate` (a React error-boundary component from `app/admin/AdminGate.tsx`), consumed by both pages in this task — nothing downstream outside it
 
-Deliberately unstyled beyond what's needed for usability — this is an internal tool, not a public surface, per the design's explicit polish decision.
+Deliberately unstyled beyond what's needed for usability — this is an internal tool, not a public surface, per the design's explicit polish decision. Inline `style={{...}}` throughout (rather than Tailwind classes) is the same deliberate choice, not an oversight — flag this to your reviewer as plan-mandated if it comes up.
 
-- [ ] **Step 1: Write the pending-claims list**
+- [ ] **Step 1: Write the shared admin gate**
+
+Both admin pages need to turn `NOT_ADMIN`/`NOT_AUTHENTICATED` (thrown by Convex's `useQuery` synchronously during render, since Convex's React client re-throws a query's server-side error at render time) into a plain "not authorized" message rather than a broken page. Write this once, in its own file, rather than duplicating a class component in both pages:
+
+Create `app/admin/AdminGate.tsx`:
+
+```tsx
+"use client";
+
+import { Component, type ReactNode } from "react";
+
+/**
+ * Turns a thrown NOT_ADMIN/NOT_AUTHENTICATED from an admin query into a
+ * plain message instead of a broken page. Convex's useQuery re-throws a
+ * query's server-side error synchronously during render, which is exactly
+ * what a React error boundary catches.
+ */
+export class AdminGate extends Component<{ children: ReactNode }, { errored: boolean }> {
+  state = { errored: false };
+  static getDerivedStateFromError() {
+    return { errored: true };
+  }
+  render() {
+    if (this.state.errored) {
+      return <p style={{ padding: 24 }}>Not authorized.</p>;
+    }
+    return this.props.children;
+  }
+}
+```
+
+- [ ] **Step 2: Write the pending-claims list**
 
 Create `app/admin/page.tsx`:
 
@@ -1693,8 +1725,9 @@ Create `app/admin/page.tsx`:
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { AdminGate } from "./AdminGate";
 
-export default function AdminClaimsPage() {
+function AdminClaimsPage() {
   const rows = useQuery(api.admin.listPendingClaims, {});
 
   if (rows === undefined) return <p style={{ padding: 24 }}>Loading…</p>;
@@ -1733,39 +1766,7 @@ export default function AdminClaimsPage() {
     </div>
   );
 }
-```
 
-`NOT_ADMIN`/`NOT_AUTHENTICATED` thrown by the query surfaces through Convex React's error boundary behavior as an unhandled query error by default; wrap the query read defensively so a non-admin sees a plain message instead of a broken page:
-
-Revise the component body to catch this via a simple try state — replace the top of the function with:
-
-```tsx
-export default function AdminClaimsPage() {
-  const rows = useQuery(api.admin.listPendingClaims, {});
-```
-
-stays as-is for the loading/empty/table cases; Convex's `useQuery` throws synchronously on a query error, so wrap the page in a minimal error boundary. Add this above the component:
-
-```tsx
-import { Component, type ReactNode } from "react";
-
-class AdminGate extends Component<{ children: ReactNode }, { errored: boolean }> {
-  state = { errored: false };
-  static getDerivedStateFromError() {
-    return { errored: true };
-  }
-  render() {
-    if (this.state.errored) {
-      return <p style={{ padding: 24 }}>Not authorized.</p>;
-    }
-    return this.props.children;
-  }
-}
-```
-
-And export the page wrapped:
-
-```tsx
 export default function AdminClaimsPageRoute() {
   return (
     <AdminGate>
@@ -1775,31 +1776,19 @@ export default function AdminClaimsPageRoute() {
 }
 ```
 
-(Rename the original default export to `AdminClaimsPage`, a named, non-default function, and keep the new wrapped component as the file's default export.)
-
-- [ ] **Step 2: Write the claim detail/review page**
+- [ ] **Step 3: Write the claim detail/review page**
 
 Create `app/admin/claims/[claimId]/page.tsx`:
 
 ```tsx
 "use client";
 
-import { use, useState, Component, type ReactNode } from "react";
+import { use, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-
-class AdminGate extends Component<{ children: ReactNode }, { errored: boolean }> {
-  state = { errored: false };
-  static getDerivedStateFromError() {
-    return { errored: true };
-  }
-  render() {
-    if (this.state.errored) return <p style={{ padding: 24 }}>Not authorized.</p>;
-    return this.props.children;
-  }
-}
+import { AdminGate } from "../../AdminGate";
 
 function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   const detail = useQuery(api.admin.getClaimDetail, { claimId });
@@ -1911,16 +1900,16 @@ export default function ClaimDetailPage({ params }: { params: Promise<{ claimId:
 }
 ```
 
-- [ ] **Step 3: Run the type checker and build**
+- [ ] **Step 4: Run the type checker and build**
 
 Run: `npx tsc --noEmit && npm run build`
 Expected: no new errors.
 
-- [ ] **Step 4: Manually verify in a browser**
+- [ ] **Step 5: Manually verify in a browser**
 
-As a non-admin (or signed out), visiting `/admin` shows "Not authorized." As an admin (flip a user's `role` via the Convex dashboard), it lists claims created by Task 5's manual test, and Approve/Reject/Purge each work and reflect in `/winners` (once Task 7... — there is no Task 7; verify against `npx convex run winners:listWinners '{}'` from the CLI instead, since the frontend read of it is this same task's sibling, already built in Task 4's backend and wired in the next step).
+As a non-admin (or signed out), visiting `/admin` shows "Not authorized." As an admin (flip a user's `role` via the Convex dashboard), it lists a claim you've pushed to `under_review` the same way `convex/admin.test.ts`'s `readyClaim` helper does, and Approve/Reject/Purge each work. To confirm an approval actually published, check `npx convex run winners:listWinners '{}'` from the CLI — Task 7 wires that same data into `/winners` itself.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add app/admin
