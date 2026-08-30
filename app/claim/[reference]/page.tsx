@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { DocumentShell } from "@/app/components/DocumentShell";
+import { AuthErrorBoundary } from "@/app/components/AuthErrorBoundary";
 import { BRAND } from "@/app/lib/brand.ts";
 
 const STEPS: Array<{ title: string; body: string }> = [
@@ -251,7 +252,9 @@ export default function ClaimPage({ params }: { params: Promise<{ reference: str
             with the account that produced this result to continue your claim.
           </p>
         ) : (
-          <ClaimForm reference={reference} />
+          <AuthErrorBoundary message="Still setting up your account — refresh this page in a moment and try again.">
+            <ClaimForm reference={reference} />
+          </AuthErrorBoundary>
         )}
       </section>
 

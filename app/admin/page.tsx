@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { AdminGate } from "./AdminGate";
+import { AuthErrorBoundary } from "@/app/components/AuthErrorBoundary";
 
 function AdminClaimsPage() {
   const rows = useQuery(api.admin.listPendingClaims, {});
@@ -47,8 +47,8 @@ function AdminClaimsPage() {
 
 export default function AdminClaimsPageRoute() {
   return (
-    <AdminGate>
+    <AuthErrorBoundary>
       <AdminClaimsPage />
-    </AdminGate>
+    </AuthErrorBoundary>
   );
 }

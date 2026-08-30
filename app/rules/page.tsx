@@ -177,10 +177,11 @@ export default async function RulesPage() {
           </li>
         </ul>
         <p>
-          Verification documents are held in restricted storage, are never publicly
-          accessible, and are used only to confirm eligibility and fulfil the prize.
-          A taxpayer identification number is never stored in our database — it
-          exists only within the tax form itself.
+          Verification documents are shared only with you and with a reviewer —
+          nobody else is ever given a link to them. They are used only to confirm
+          eligibility and fulfil the prize, and a reviewer removes them once your
+          claim is resolved. A taxpayer identification number is never stored in
+          our database — it exists only within the tax form itself.
         </p>
       </section>
 

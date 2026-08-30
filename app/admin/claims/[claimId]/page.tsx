@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { AdminGate } from "../../AdminGate";
+import { AuthErrorBoundary } from "@/app/components/AuthErrorBoundary";
 
 function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   const detail = useQuery(api.admin.getClaimDetail, { claimId });
@@ -110,8 +110,8 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
 export default function ClaimDetailPage({ params }: { params: Promise<{ claimId: string }> }) {
   const { claimId } = use(params);
   return (
-    <AdminGate>
+    <AuthErrorBoundary>
       <ClaimDetail claimId={claimId as Id<"claims">} />
-    </AdminGate>
+    </AuthErrorBoundary>
   );
 }
