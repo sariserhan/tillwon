@@ -130,6 +130,80 @@ describe("claims", () => {
       const result = await as.query(api.claims.getMyClaim, { reference });
       expect(result).toMatchObject({ claim: { claimReference: reference, status: "potential_winner" }, documents: [] });
     });
+
+    it("lets each user reach their own claim when claimReference collides across campaigns, and still returns null for an unrelated user", async () => {
+      // claimReference is a deterministic function of the sealed target
+      // (spins.ts), not a uniqueness-guaranteed identifier — two campaigns can
+      // produce the identical string. Seeding the collision directly here
+      // (rather than via the full spin pipeline) reaches the same condition
+      // requireOwnedClaim (claims.ts) must survive without a hard crash.
+      const t = convexTest(schema, modules);
+      await t.mutation(internal.seed.seedCampaign, {});
+
+      const asAda = t.withIdentity({ subject: "clerk_ada", email: "ada@example.com" });
+      const adaId = await asAda.mutation(api.users.ensureUser, {});
+      const asBob = t.withIdentity({ subject: "clerk_bob", email: "bob@example.com" });
+      const bobId = await asBob.mutation(api.users.ensureUser, {});
+      const asCarol = t.withIdentity({ subject: "clerk_carol", email: "carol@example.com" });
+      await asCarol.mutation(api.users.ensureUser, {});
+
+      const collidingReference = "CLAIM-COLLISION";
+      const spinFields = {
+        shard: 0,
+        shardSequence: 1,
+        symbols: ["SEVEN", "SEVEN", "SEVEN"],
+        isPotentialWinner: true,
+        isValid: true,
+        riskScore: 0,
+        riskFlags: [] as string[],
+        ipHash: "",
+        deviceHash: "test",
+        engineVersion: "test",
+        rulesVersion: 1,
+      };
+      const { adaClaimId, bobClaimId } = await t.run(async (ctx) => {
+        const campaign = (await ctx.db.query("campaigns").first())!;
+        const adaSpinId = await ctx.db.insert("spins", {
+          ...spinFields,
+          userId: adaId,
+          campaignId: campaign._id,
+          idempotencyKey: "ada-win",
+        });
+        const bobSpinId = await ctx.db.insert("spins", {
+          ...spinFields,
+          userId: bobId,
+          campaignId: campaign._id,
+          idempotencyKey: "bob-win",
+        });
+        const claimDeadline = Date.now() + 14 * 24 * 3_600_000;
+        const adaClaimId = await ctx.db.insert("claims", {
+          campaignId: campaign._id,
+          spinId: adaSpinId,
+          userId: adaId,
+          claimReference: collidingReference,
+          status: "potential_winner",
+          claimDeadline,
+        });
+        const bobClaimId = await ctx.db.insert("claims", {
+          campaignId: campaign._id,
+          spinId: bobSpinId,
+          userId: bobId,
+          claimReference: collidingReference,
+          status: "potential_winner",
+          claimDeadline,
+        });
+        return { adaClaimId, bobClaimId };
+      });
+
+      const adaResult = await asAda.query(api.claims.getMyClaim, { reference: collidingReference });
+      expect(adaResult!.claim._id).toBe(adaClaimId);
+
+      const bobResult = await asBob.query(api.claims.getMyClaim, { reference: collidingReference });
+      expect(bobResult!.claim._id).toBe(bobClaimId);
+
+      const carolResult = await asCarol.query(api.claims.getMyClaim, { reference: collidingReference });
+      expect(carolResult).toBeNull();
+    });
   });
 
   describe("upload and registration", () => {

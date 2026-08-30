@@ -278,9 +278,10 @@ export default function ClaimPage({ params }: { params: Promise<{ reference: str
       <section>
         <h2>How your documents are handled</h2>
         <p>
-          Verification documents are held in restricted storage, are never publicly
-          accessible, and are reachable only by you and by a reviewer. They are used to
-          confirm eligibility and fulfil the prize, and for nothing else.
+          Verification documents are shared only with you and with a reviewer — nobody
+          else is ever given a link to them. They are used to confirm eligibility and
+          fulfil the prize, and for nothing else. Once your claim is resolved, a reviewer
+          removes them.
         </p>
         <p>
           What gets published is your name (or the name you choose to publish), your

@@ -124,5 +124,6 @@ describe("listWinners", () => {
       revealedTarget: "0:1", revealedNonce: "nonce", commitmentHash: "abc",
     });
     expect(typeof winners[0].photoUrl).toBe("string");
+    expect(winners[0]).not.toHaveProperty("legalName");
   });
 });

@@ -130,6 +130,19 @@ export const approveClaim = mutation({
       before: { status: "under_review" },
       after: { status: "approved" },
     });
+    // The campaign's own transition — completed, with its sealed commitment
+    // now unsealed — is the most consequential state change in this feature
+    // and needs its own campaign-scoped record, mirroring sealTarget's
+    // campaign.seal_target entry in winnerEngine.ts.
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "campaign.completed",
+      entityType: "campaigns",
+      entityId: campaign._id,
+      before: { status: "winner_pending" },
+      after: { status: "completed", commitmentHash: campaign.commitmentHash, revealedTarget },
+    });
     return null;
   },
 });

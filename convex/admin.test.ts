@@ -166,6 +166,35 @@ describe("admin claim review", () => {
       });
     });
 
+    it("writes a campaign-scoped audit entry for the completion and reveal, alongside the claim's own entry", async () => {
+      const t = convexTest(schema, modules);
+      const { claim, campaignId } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.approveClaim, { claimId: claim._id });
+
+      const campaignAuditEntries = await t.run((ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+          .collect(),
+      );
+      const completed = campaignAuditEntries.find((e) => e.action === "campaign.completed");
+      expect(completed).toBeDefined();
+      expect(completed!.after).toMatchObject({
+        status: "completed",
+        commitmentHash: expect.any(String),
+        revealedTarget: "0:1",
+      });
+
+      const claimAuditEntries = await t.run((ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_entity", (q) => q.eq("entityType", "claims").eq("entityId", claim._id))
+          .collect(),
+      );
+      expect(claimAuditEntries.some((e) => e.action === "claim.approved")).toBe(true);
+    });
+
     it("throws and publishes nothing if the commitment hash was tampered with", async () => {
       const t = convexTest(schema, modules);
       const { claim, campaignId } = await readyClaim(t);

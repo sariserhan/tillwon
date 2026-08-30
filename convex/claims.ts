@@ -26,11 +26,19 @@ async function requireOwnedClaim(
   reference: string,
 ): Promise<{ user: Doc<"users">; claim: Doc<"claims"> } | null> {
   const user = await requireUser(ctx);
-  const claim = await ctx.db
+  // claimReference is a deterministic function of the sealed target
+  // (spins.ts), not a uniqueness-guaranteed identifier: two campaigns can
+  // produce the identical string. `.unique()` would throw on that collision
+  // and hard-lock out both legitimate winners, so collect and pick the
+  // caller's own row instead. Zero matches, or matches that all belong to
+  // someone else, both fall through to null — "no such reference" and
+  // "someone else's reference" must stay indistinguishable to the caller.
+  const candidates = await ctx.db
     .query("claims")
     .withIndex("by_reference", (q) => q.eq("claimReference", reference))
-    .unique();
-  if (claim === null || claim.userId !== user._id) return null;
+    .collect();
+  const claim = candidates.find((c) => c.userId === user._id);
+  if (claim === undefined) return null;
   return { user, claim };
 }
 
