@@ -431,3 +431,178 @@ describe("activate", () => {
     await expect(as.action(api.campaignAdmin.activate, { campaignId })).rejects.toThrow("NOT_ADMIN");
   });
 });
+
+async function createAndActivate(
+  t: ReturnType<typeof convexTest>,
+  admin: Awaited<ReturnType<typeof asAdmin>>,
+  overrides: Partial<typeof CAMPAIGN_ARGS> = {},
+) {
+  const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+    ...CAMPAIGN_ARGS,
+    ...overrides,
+    prize: NEW_PRIZE_ARGS,
+  });
+  await admin.action(api.campaignAdmin.activate, { campaignId });
+  return campaignId;
+}
+
+describe("suspendCampaign", () => {
+  it("suspends a live campaign", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+
+    await admin.mutation(api.campaignAdmin.suspendCampaign, { campaignId });
+
+    const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+    expect(campaign!.status).toBe("suspended");
+  });
+
+  it("refuses to suspend a campaign that isn't live", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await expect(
+      admin.mutation(api.campaignAdmin.suspendCampaign, { campaignId }),
+    ).rejects.toThrow("CAMPAIGN_NOT_LIVE");
+  });
+
+  it("writes an audit entry with the reason in metadata", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+
+    await admin.mutation(api.campaignAdmin.suspendCampaign, {
+      campaignId,
+      reason: "Sponsor requested a pause",
+    });
+
+    const entries = await t.run((ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+        .collect(),
+    );
+    const entry = entries.find((e) => e.action === "campaign.suspended");
+    expect(entry).toBeDefined();
+    expect(entry!.metadata).toMatchObject({ reason: "Sponsor requested a pause" });
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(as.mutation(api.campaignAdmin.suspendCampaign, { campaignId })).rejects.toThrow(
+      "NOT_ADMIN",
+    );
+  });
+});
+
+describe("resumeCampaign", () => {
+  it("resumes a suspended campaign back to live", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+    await admin.mutation(api.campaignAdmin.suspendCampaign, { campaignId });
+
+    await admin.mutation(api.campaignAdmin.resumeCampaign, { campaignId });
+
+    const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+    expect(campaign!.status).toBe("live");
+  });
+
+  it("refuses to resume a campaign that isn't suspended", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+
+    await expect(
+      admin.mutation(api.campaignAdmin.resumeCampaign, { campaignId }),
+    ).rejects.toThrow("CAMPAIGN_NOT_SUSPENDED");
+  });
+
+  it("refuses to resume while another campaign is already live, and leaves it suspended", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const firstId = await createAndActivate(t, admin);
+    await admin.mutation(api.campaignAdmin.suspendCampaign, { campaignId: firstId });
+
+    await createAndActivate(t, admin, {
+      title: "Second Giveaway",
+    });
+
+    await expect(
+      admin.mutation(api.campaignAdmin.resumeCampaign, { campaignId: firstId }),
+    ).rejects.toThrow("ANOTHER_CAMPAIGN_ACTIVE");
+
+    const stillSuspended = await t.run((ctx) => ctx.db.get(firstId));
+    expect(stillSuspended!.status).toBe("suspended");
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+    await admin.mutation(api.campaignAdmin.suspendCampaign, { campaignId });
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(as.mutation(api.campaignAdmin.resumeCampaign, { campaignId })).rejects.toThrow(
+      "NOT_ADMIN",
+    );
+  });
+});
+
+describe("cancelCampaign", () => {
+  it("cancels a live campaign", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+
+    await admin.mutation(api.campaignAdmin.cancelCampaign, { campaignId });
+
+    const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+    expect(campaign!.status).toBe("cancelled");
+  });
+
+  it("cancels a suspended campaign", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+    await admin.mutation(api.campaignAdmin.suspendCampaign, { campaignId });
+
+    await admin.mutation(api.campaignAdmin.cancelCampaign, { campaignId });
+
+    const campaign = await t.run((ctx) => ctx.db.get(campaignId));
+    expect(campaign!.status).toBe("cancelled");
+  });
+
+  it("refuses to cancel a draft campaign", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await expect(
+      admin.mutation(api.campaignAdmin.cancelCampaign, { campaignId }),
+    ).rejects.toThrow("CAMPAIGN_NOT_CANCELLABLE");
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(as.mutation(api.campaignAdmin.cancelCampaign, { campaignId })).rejects.toThrow(
+      "NOT_ADMIN",
+    );
+  });
+});

@@ -362,3 +362,101 @@ export const activate = action({
     return null;
   },
 });
+
+/** True if some other campaign already holds the one "playable" slot. Mirrors
+ * winnerEngine.ts's sealTarget check — resumeCampaign needs the same guarantee,
+ * since a campaign can go live→suspended→live without ever re-sealing. */
+async function anotherCampaignIsActive(ctx: MutationCtx, excludingId: string): Promise<boolean> {
+  const liveCampaigns = await ctx.db
+    .query("campaigns")
+    .withIndex("by_status", (q) => q.eq("status", "live"))
+    .collect();
+  const pendingCampaigns = await ctx.db
+    .query("campaigns")
+    .withIndex("by_status", (q) => q.eq("status", "winner_pending"))
+    .collect();
+  return [...liveCampaigns, ...pendingCampaigns].some((c) => c._id !== excludingId);
+}
+
+export const suspendCampaign = mutation({
+  args: { campaignId: v.id("campaigns"), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    if (campaign.status !== "live") throw new Error("CAMPAIGN_NOT_LIVE");
+
+    await ctx.db.patch(args.campaignId, { status: "suspended" });
+
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "campaign.suspended",
+      entityType: "campaigns",
+      entityId: args.campaignId,
+      before: { status: "live" },
+      after: { status: "suspended" },
+      metadata: args.reason !== undefined ? { reason: args.reason } : undefined,
+    });
+
+    return null;
+  },
+});
+
+export const resumeCampaign = mutation({
+  args: { campaignId: v.id("campaigns") },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    if (campaign.status !== "suspended") throw new Error("CAMPAIGN_NOT_SUSPENDED");
+
+    // A second campaign could have been activated while this one sat
+    // suspended — the single-active-campaign guarantee has to hold here too,
+    // not just at the original activation.
+    if (await anotherCampaignIsActive(ctx, args.campaignId)) {
+      throw new Error("ANOTHER_CAMPAIGN_ACTIVE");
+    }
+
+    await ctx.db.patch(args.campaignId, { status: "live" });
+
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "campaign.resumed",
+      entityType: "campaigns",
+      entityId: args.campaignId,
+      before: { status: "suspended" },
+      after: { status: "live" },
+    });
+
+    return null;
+  },
+});
+
+export const cancelCampaign = mutation({
+  args: { campaignId: v.id("campaigns"), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    if (campaign.status !== "live" && campaign.status !== "suspended") {
+      throw new Error("CAMPAIGN_NOT_CANCELLABLE");
+    }
+
+    await ctx.db.patch(args.campaignId, { status: "cancelled" });
+
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "campaign.cancelled",
+      entityType: "campaigns",
+      entityId: args.campaignId,
+      before: { status: campaign.status },
+      after: { status: "cancelled" },
+      metadata: args.reason !== undefined ? { reason: args.reason } : undefined,
+    });
+
+    return null;
+  },
+});
