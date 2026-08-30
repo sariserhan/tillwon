@@ -8,9 +8,12 @@
  * @module
  */
 
+import type * as admin from "../admin.js";
 import type * as balances from "../balances.js";
 import type * as campaigns from "../campaigns.js";
+import type * as claims from "../claims.js";
 import type * as eligibility from "../eligibility.js";
+import type * as lib_admin from "../lib/admin.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_jurisdictions from "../lib/jurisdictions.js";
 import type * as lib_reels from "../lib/reels.js";
@@ -30,9 +33,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  admin: typeof admin;
   balances: typeof balances;
   campaigns: typeof campaigns;
+  claims: typeof claims;
   eligibility: typeof eligibility;
+  "lib/admin": typeof lib_admin;
   "lib/audit": typeof lib_audit;
   "lib/jurisdictions": typeof lib_jurisdictions;
   "lib/reels": typeof lib_reels;

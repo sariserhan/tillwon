@@ -1,0 +1,154 @@
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+import { requireUser } from "./users.ts";
+import { writeAudit } from "./lib/audit.ts";
+import type { Doc } from "./_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+
+const MAX_BYTES = 10 * 1024 * 1024;
+const ID_AND_ADDRESS_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png"]);
+
+const documentType = v.union(
+  v.literal("photo_id"),
+  v.literal("proof_of_address"),
+  v.literal("winner_photo"),
+);
+
+/**
+ * The one lookup every claimant-side function starts with. The reference
+ * identifies *which* claim; owning it (being signed in as the user it
+ * belongs to) is what authorizes seeing or changing it. Neither alone is
+ * enough — a reference was never meant to be a credential.
+ */
+async function requireOwnedClaim(
+  ctx: MutationCtx | QueryCtx,
+  reference: string,
+): Promise<{ user: Doc<"users">; claim: Doc<"claims"> } | null> {
+  const user = await requireUser(ctx);
+  const claim = await ctx.db
+    .query("claims")
+    .withIndex("by_reference", (q) => q.eq("claimReference", reference))
+    .unique();
+  if (claim === null || claim.userId !== user._id) return null;
+  return { user, claim };
+}
+
+export const getMyClaim = query({
+  args: { reference: v.string() },
+  handler: async (ctx, args) => {
+    const owned = await requireOwnedClaim(ctx, args.reference);
+    if (owned === null) return null;
+    const documents = await ctx.db
+      .query("claimDocuments")
+      .withIndex("by_claim", (q) => q.eq("claimId", owned.claim._id))
+      .collect();
+    return { claim: owned.claim, documents };
+  },
+});
+
+export const generateDocumentUploadUrl = mutation({
+  args: { reference: v.string() },
+  handler: async (ctx, args) => {
+    const owned = await requireOwnedClaim(ctx, args.reference);
+    if (owned === null) throw new Error("CLAIM_NOT_FOUND");
+    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const registerUploadedDocument = mutation({
+  args: { reference: v.string(), type: documentType, storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const owned = await requireOwnedClaim(ctx, args.reference);
+    if (owned === null) {
+      await ctx.storage.delete(args.storageId);
+      throw new Error("CLAIM_NOT_FOUND");
+    }
+
+    const metadata = await ctx.db.system.get(args.storageId);
+    if (metadata === null) throw new Error("UPLOAD_NOT_FOUND");
+
+    const allowed = args.type === "winner_photo" ? PHOTO_TYPES : ID_AND_ADDRESS_TYPES;
+    if (metadata.contentType === undefined || !allowed.has(metadata.contentType)) {
+      await ctx.storage.delete(args.storageId);
+      throw new Error("UNSUPPORTED_FILE_TYPE");
+    }
+    if (metadata.size > MAX_BYTES) {
+      await ctx.storage.delete(args.storageId);
+      throw new Error("FILE_TOO_LARGE");
+    }
+
+    const existing = await ctx.db
+      .query("claimDocuments")
+      .withIndex("by_claim_type", (q) => q.eq("claimId", owned.claim._id).eq("type", args.type))
+      .unique();
+    if (existing !== null) {
+      await ctx.storage.delete(existing.storageId);
+      await ctx.db.delete(existing._id);
+    }
+
+    await ctx.db.insert("claimDocuments", {
+      claimId: owned.claim._id,
+      userId: owned.user._id,
+      type: args.type,
+      storageId: args.storageId,
+      uploadedAt: Date.now(),
+    });
+    await writeAudit(ctx, {
+      actorType: "user",
+      actorId: owned.user._id,
+      action: "claim.document_registered",
+      entityType: "claims",
+      entityId: owned.claim._id,
+      metadata: { type: args.type },
+    });
+    return null;
+  },
+});
+
+export const submitClaimDocuments = mutation({
+  args: {
+    reference: v.string(),
+    legalName: v.string(),
+    publicDisplayName: v.optional(v.string()),
+    affidavitAccepted: v.boolean(),
+    publicityReleaseAccepted: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const owned = await requireOwnedClaim(ctx, args.reference);
+    if (owned === null) throw new Error("CLAIM_NOT_FOUND");
+    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+
+    const documents = await ctx.db
+      .query("claimDocuments")
+      .withIndex("by_claim", (q) => q.eq("claimId", owned.claim._id))
+      .collect();
+    const types = new Set(documents.map((d) => d.type));
+    if (!types.has("photo_id") || !types.has("proof_of_address") || !types.has("winner_photo")) {
+      throw new Error("MISSING_DOCUMENTS");
+    }
+    if (!args.affidavitAccepted || !args.publicityReleaseAccepted) {
+      throw new Error("CONSENT_REQUIRED");
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(owned.claim._id, {
+      legalName: args.legalName,
+      publicDisplayName: args.publicDisplayName ?? args.legalName,
+      eligibilityAffidavitAcceptedAt: now,
+      publicityReleaseAcceptedAt: now,
+      status: "under_review",
+    });
+    await writeAudit(ctx, {
+      actorType: "user",
+      actorId: owned.user._id,
+      action: "claim.submitted",
+      entityType: "claims",
+      entityId: owned.claim._id,
+      before: { status: "potential_winner" },
+      after: { status: "under_review" },
+    });
+    return null;
+  },
+});
