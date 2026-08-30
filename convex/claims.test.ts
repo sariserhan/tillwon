@@ -320,6 +320,44 @@ describe("claims", () => {
       const metadata = await t.run((ctx) => ctx.db.system.get(storageId));
       expect(metadata).not.toBeNull();
     });
+
+    it("refuses to attach a storageId already registered on another claim, and does not delete it", async () => {
+      const t = convexTest(schema, modules);
+      const { as: asAda, reference: adaReference } = await makeClaimant(t, "clerk_ada");
+      const adaStorageId = await uploadFile(t, asAda, adaReference, "image/png", pngBytes);
+      await asAda.mutation(api.claims.registerUploadedDocument, {
+        reference: adaReference,
+        type: "winner_photo",
+        storageId: adaStorageId as never,
+      });
+
+      const { as: asBob, reference: bobReference } = await makeClaimant(t, "clerk_bob");
+      // Bob pairs his own claim reference with the storage id Ada's document
+      // already points at — nothing about owning his own claim proves he
+      // uploaded that particular file.
+      await expect(
+        asBob.mutation(api.claims.registerUploadedDocument, {
+          reference: bobReference,
+          type: "winner_photo",
+          storageId: adaStorageId as never,
+        }),
+      ).rejects.toThrow("STORAGE_ALREADY_REGISTERED");
+
+      // Ada's own registration must be completely unaffected: still exactly
+      // one row, and the storage object still resolves (not deleted).
+      const adaClaim = await t.run((ctx) =>
+        ctx.db
+          .query("claims")
+          .withIndex("by_reference", (q) => q.eq("claimReference", adaReference))
+          .unique(),
+      );
+      const adaDocs = await t.run((ctx) =>
+        ctx.db.query("claimDocuments").withIndex("by_claim", (q) => q.eq("claimId", adaClaim!._id)).collect(),
+      );
+      expect(adaDocs).toHaveLength(1);
+      const metadata = await t.run((ctx) => ctx.db.system.get(adaStorageId as never));
+      expect(metadata).not.toBeNull();
+    });
   });
 
   describe("submitClaimDocuments", () => {
@@ -347,6 +385,26 @@ describe("claims", () => {
           publicityReleaseAccepted: true,
         }),
       ).rejects.toThrow("MISSING_DOCUMENTS");
+    });
+
+    it("refuses to submit after the claim deadline has passed", async () => {
+      const t = convexTest(schema, modules);
+      const ctx = await withAllDocuments(t);
+      const claim = await t.run((ctx2) =>
+        ctx2.db
+          .query("claims")
+          .withIndex("by_reference", (q) => q.eq("claimReference", ctx.reference))
+          .unique(),
+      );
+      await t.run((ctx2) => ctx2.db.patch(claim!._id, { claimDeadline: Date.now() - 1 }));
+      await expect(
+        ctx.as.mutation(api.claims.submitClaimDocuments, {
+          reference: ctx.reference,
+          legalName: "Ada Lovelace",
+          affidavitAccepted: true,
+          publicityReleaseAccepted: true,
+        }),
+      ).rejects.toThrow("CLAIM_DEADLINE_PASSED");
     });
 
     it("throws if either checkbox is false", async () => {

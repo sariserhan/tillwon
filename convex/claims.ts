@@ -76,6 +76,19 @@ export const registerUploadedDocument = mutation({
     if (owned === null) throw new Error("CLAIM_NOT_FOUND");
     if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
 
+    // A storageId is a client-supplied argument, decoupled from `reference` —
+    // nothing about owning this claim proves the caller is the one who
+    // uploaded a *particular* storage object. If it's already attached to
+    // someone else's claim, refuse rather than let this claim adopt (and,
+    // via the replace-on-reupload path below, eventually delete) it.
+    const alreadyRegistered = await ctx.db
+      .query("claimDocuments")
+      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
+      .first();
+    if (alreadyRegistered !== null && alreadyRegistered.claimId !== owned.claim._id) {
+      throw new Error("STORAGE_ALREADY_REGISTERED");
+    }
+
     const metadata = await ctx.db.system.get(args.storageId);
     if (metadata === null) throw new Error("UPLOAD_NOT_FOUND");
 
@@ -129,6 +142,10 @@ export const submitClaimDocuments = mutation({
     const owned = await requireOwnedClaim(ctx, args.reference);
     if (owned === null) throw new Error("CLAIM_NOT_FOUND");
     if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+    // The Official Rules promise a 14-day window to begin a claim; nothing
+    // previously enforced it, so a claim could be submitted and approved
+    // arbitrarily long after the deadline it commits to.
+    if (owned.claim.claimDeadline < Date.now()) throw new Error("CLAIM_DEADLINE_PASSED");
 
     const documents = await ctx.db
       .query("claimDocuments")

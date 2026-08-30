@@ -9,6 +9,7 @@ Working todo list for TillWon. Checked items are done and on `main`.
 - [x] Final-review merge blockers: claim-reference collision lockout, false document-access copy, missing campaign audit trail on approval, winner-privacy test guard
 - [x] Follow-up: matching copy fix on the rules page, shared narrow error boundary (claim page + admin, no longer swallows every error into "Not authorized")
 - [x] All Minor/opportunistic items below (name trim/bounds, `CLAIM_DATA_INCOMPLETE` guard, `getMyClaim` field trimming, `robots.ts` admin disallow, double-decode fix, purge audit metadata, `claims.test.ts` type fix, friendly admin error messages)
+- [x] Storage-ID ownership binding and `claimDeadline` enforcement (see pre-production gate section, now checked off)
 
 ## Before real claimants use this (pre-production gate)
 
@@ -16,8 +17,8 @@ Nothing here blocks merging further work, but none of it should ship to real use
 
 - [ ] **One real authenticated click-through**: sign in → upload 3 documents → submit → admin approve → check `/winners`, in an actual browser. Every SDD task in this feature hit Clerk's Turnstile bot-protection wall and verified around it (tests + type-checking + shape review) instead of a live pass. Unblock with Clerk dev bot-protection off, or `+clerk_test` addresses.
 - [ ] **Document access control**: `convex/admin.ts`'s `getClaimDetail` hands out `storage.getUrl()` links, which are unauthenticated and non-expiring once obtained (confirmed in Convex's own docs). Replace with an authenticated HTTP action that streams the file after checking the caller.
-- [ ] **Storage-ID ownership binding**: `registerUploadedDocument` never verifies the caller uploaded the storage object they're attaching — a known storage ID from another user's claim can be attached to (and then overwritten/deleted from) someone else's claim. Low exploitability (IDs are unguessable UUIDs), but no ownership check exists.
-- [ ] **Enforce `claimDeadline`**: the Official Rules promise a 14-day window to begin a claim; nothing in `submitClaimDocuments` or `approveClaim` actually checks it.
+- [x] **Storage-ID ownership binding**: `registerUploadedDocument` now refuses a `storageId` already registered on a *different* claim (`STORAGE_ALREADY_REGISTERED`), via a new `claimDocuments.by_storage` index — closes the overwrite/delete-another-user's-file path without deleting anything on the refusal.
+- [x] **Enforce `claimDeadline`**: `submitClaimDocuments` now throws `CLAIM_DEADLINE_PASSED` if the claim's deadline has passed.
 - [ ] **Confirmation on Approve and Purge**: both are single-click, irreversible (permanent public publish + sealed-target reveal; permanent deletion of ID evidence). No `unapprove`/`unpurge` path exists anywhere.
 - [ ] **Content-type validation is client-asserted**: `registerUploadedDocument` trusts the browser's declared `Content-Type` header, not the actual file bytes. Either sniff magic bytes or stop describing it as verifying the file.
 

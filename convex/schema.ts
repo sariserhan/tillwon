@@ -245,7 +245,8 @@ export default defineSchema({
     uploadedAt: v.number(),
   })
     .index("by_claim", ["claimId"])
-    .index("by_claim_type", ["claimId", "type"]),
+    .index("by_claim_type", ["claimId", "type"])
+    .index("by_storage", ["storageId"]),
 
   winnerArchive: defineTable({
     campaignId: v.id("campaigns"),
