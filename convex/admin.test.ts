@@ -235,6 +235,27 @@ describe("admin claim review", () => {
 
       const photoStillReadable = await t.run((ctx) => ctx.storage.getUrl(archiveBefore!.photoStorageId));
       expect(photoStillReadable).not.toBeNull();
+
+      // The claimDocuments row for that photo is not itself archived anywhere,
+      // so purge must still remove it even though its storage object survives.
+      const rows = await t.run((ctx) =>
+        ctx.db.query("claimDocuments").withIndex("by_claim", (q) => q.eq("claimId", claim._id)).collect(),
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it("refuses to purge a claim before an approve/reject decision has been made", async () => {
+      const t = convexTest(schema, modules);
+      const { claim } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await expect(
+        admin.mutation(api.admin.purgeClaimDocuments, { claimId: claim._id }),
+      ).rejects.toThrow("CLAIM_NOT_RESOLVED");
+
+      const rows = await t.run((ctx) =>
+        ctx.db.query("claimDocuments").withIndex("by_claim", (q) => q.eq("claimId", claim._id)).collect(),
+      );
+      expect(rows).toHaveLength(3);
     });
   });
 });

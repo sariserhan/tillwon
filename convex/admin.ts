@@ -163,6 +163,13 @@ export const purgeClaimDocuments = mutation({
     const admin = await requireAdmin(ctx);
     const claim = await ctx.db.get(args.claimId);
     if (claim === null) throw new Error("CLAIM_NOT_FOUND");
+    // Purge is post-decision cleanup, not pre-decision: purging before
+    // approve/reject would delete evidence a later legitimate approveClaim
+    // still needs (it would then fail with MISSING_WINNER_PHOTO after the
+    // documents are already gone).
+    if (claim.status !== "approved" && claim.status !== "disqualified") {
+      throw new Error("CLAIM_NOT_RESOLVED");
+    }
 
     const archive =
       claim.status === "approved"
@@ -180,9 +187,10 @@ export const purgeClaimDocuments = mutation({
     for (const doc of documents) {
       // The winner photo's storage object is kept if winnerArchive references
       // it independently — the archive copy is intentionally permanent and
-      // public; deleting the underlying file would break it.
-      if (archive !== null && doc.storageId === archive.photoStorageId) continue;
-      await ctx.storage.delete(doc.storageId);
+      // public; deleting the underlying file would break it. The claimDocuments
+      // row itself is not archived anywhere, so it's always purged.
+      const keepStorage = archive !== null && doc.storageId === archive.photoStorageId;
+      if (!keepStorage) await ctx.storage.delete(doc.storageId);
       await ctx.db.delete(doc._id);
     }
 
