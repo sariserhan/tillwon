@@ -204,6 +204,37 @@ describe("claims", () => {
         asEve.mutation(api.claims.generateDocumentUploadUrl, { reference }),
       ).rejects.toThrow("CLAIM_NOT_FOUND");
     });
+
+    it("refuses registerUploadedDocument itself against a claim the caller does not own, and does not delete the storage object", async () => {
+      const t = convexTest(schema, modules);
+      const { reference } = await makeClaimant(t, "clerk_ada");
+      const asEve = t.withIdentity({ subject: "clerk_eve", email: "eve@example.com" });
+      await asEve.mutation(api.users.ensureUser, {});
+
+      // A storageId is just a client-supplied argument, decoupled from
+      // `reference` — Eve could pair any storage id she has with a claim
+      // reference she doesn't own. registerUploadedDocument must refuse this
+      // directly (not merely rely on generateDocumentUploadUrl gatekeeping
+      // upstream), and it must not delete the object on the way out: nothing
+      // at the ownership-check point establishes Eve has any legitimate
+      // claim on this storage object, so treating "ownership failed" as
+      // license to delete it would be an authenticated-only delete-any-file
+      // primitive.
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(new Blob([pngBytes as BlobPart], { type: "image/png" })),
+      );
+
+      await expect(
+        asEve.mutation(api.claims.registerUploadedDocument, {
+          reference,
+          type: "winner_photo",
+          storageId: storageId as never,
+        }),
+      ).rejects.toThrow("CLAIM_NOT_FOUND");
+
+      const metadata = await t.run((ctx) => ctx.db.system.get(storageId));
+      expect(metadata).not.toBeNull();
+    });
   });
 
   describe("submitClaimDocuments", () => {

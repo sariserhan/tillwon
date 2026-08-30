@@ -61,10 +61,8 @@ export const registerUploadedDocument = mutation({
   args: { reference: v.string(), type: documentType, storageId: v.id("_storage") },
   handler: async (ctx, args) => {
     const owned = await requireOwnedClaim(ctx, args.reference);
-    if (owned === null) {
-      await ctx.storage.delete(args.storageId);
-      throw new Error("CLAIM_NOT_FOUND");
-    }
+    if (owned === null) throw new Error("CLAIM_NOT_FOUND");
+    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
 
     const metadata = await ctx.db.system.get(args.storageId);
     if (metadata === null) throw new Error("UPLOAD_NOT_FOUND");
