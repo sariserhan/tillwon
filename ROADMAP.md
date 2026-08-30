@@ -10,17 +10,18 @@ Working todo list for TillWon. Checked items are done and on `main`.
 - [x] Follow-up: matching copy fix on the rules page, shared narrow error boundary (claim page + admin, no longer swallows every error into "Not authorized")
 - [x] All Minor/opportunistic items below (name trim/bounds, `CLAIM_DATA_INCOMPLETE` guard, `getMyClaim` field trimming, `robots.ts` admin disallow, double-decode fix, purge audit metadata, `claims.test.ts` type fix, friendly admin error messages)
 - [x] Storage-ID ownership binding and `claimDeadline` enforcement (see pre-production gate section, now checked off)
+- [x] Document access control (authenticated HTTP action), Approve/Purge confirmation dialogs, and content-type magic-byte sniffing (see pre-production gate section, now checked off)
 
 ## Before real claimants use this (pre-production gate)
 
 Nothing here blocks merging further work, but none of it should ship to real users until done. Full detail and file:line references in `.superpowers/sdd/2026-08-30-claim-verification/final-review.md` (in git history — the branch was merged and deleted, so pull that file from commit history if the worktree is gone).
 
-- [ ] **One real authenticated click-through**: sign in → upload 3 documents → submit → admin approve → check `/winners`, in an actual browser. Every SDD task in this feature hit Clerk's Turnstile bot-protection wall and verified around it (tests + type-checking + shape review) instead of a live pass. Unblock with Clerk dev bot-protection off, or `+clerk_test` addresses.
-- [ ] **Document access control**: `convex/admin.ts`'s `getClaimDetail` hands out `storage.getUrl()` links, which are unauthenticated and non-expiring once obtained (confirmed in Convex's own docs). Replace with an authenticated HTTP action that streams the file after checking the caller.
+- [ ] **One real authenticated click-through**: sign in → upload 3 documents → submit → admin approve → view a document → check `/winners`, in an actual browser. Every SDD task in this feature hit Clerk's Turnstile bot-protection wall and verified around it (tests + type-checking + shape review) instead of a live pass. The new `/documents` HTTP action was smoke-tested live and unauthenticated (route reachable, argument validation, CORS/OPTIONS all correct) but its authenticated success path — an admin actually viewing a document through it — needs the same browser pass as the rest of the flow. Unblock with Clerk dev bot-protection off, or `+clerk_test` addresses.
+- [x] **Document access control**: added `convex/http.ts`'s `/documents` HTTP action — re-checks `requireAdmin` on every request (via `admin.getDocumentForServing`) and streams the file with `Cache-Control: no-store`, replacing the old unauthenticated, non-expiring `storage.getUrl()` link. The admin claim-detail page now fetches with a Clerk bearer token instead of rendering a bare `<a href>`.
 - [x] **Storage-ID ownership binding**: `registerUploadedDocument` now refuses a `storageId` already registered on a *different* claim (`STORAGE_ALREADY_REGISTERED`), via a new `claimDocuments.by_storage` index — closes the overwrite/delete-another-user's-file path without deleting anything on the refusal.
 - [x] **Enforce `claimDeadline`**: `submitClaimDocuments` now throws `CLAIM_DEADLINE_PASSED` if the claim's deadline has passed.
-- [ ] **Confirmation on Approve and Purge**: both are single-click, irreversible (permanent public publish + sealed-target reveal; permanent deletion of ID evidence). No `unapprove`/`unpurge` path exists anywhere.
-- [ ] **Content-type validation is client-asserted**: `registerUploadedDocument` trusts the browser's declared `Content-Type` header, not the actual file bytes. Either sniff magic bytes or stop describing it as verifying the file.
+- [x] **Confirmation on Approve and Purge**: both now require a `window.confirm()` before firing.
+- [x] **Content-type validation is client-asserted**: `registerUploadedDocument` is now a Convex *action* (`convex/lib/fileSniff.ts`'s `sniffFileType`) that reads the file's actual bytes (PNG/JPEG/PDF magic numbers) instead of trusting the browser's declared `Content-Type` header. The ownership/status gate and the actual DB write moved into internal functions (`checkClaimSubmittable`, `finalizeDocumentRegistration`) since actions have no direct `ctx.db` access.
 
 ## Minor / opportunistic
 

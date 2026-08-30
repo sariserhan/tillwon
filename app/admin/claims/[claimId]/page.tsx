@@ -3,10 +3,52 @@
 import { use, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AuthErrorBoundary } from "@/app/components/AuthErrorBoundary";
 import { friendlyErrorMessage } from "@/app/lib/convexError";
+
+type DocType = "photo_id" | "proof_of_address" | "winner_photo";
+
+/**
+ * Fetches a document through the authenticated /documents HTTP action
+ * (convex/http.ts) on click, rather than rendering a pre-resolved
+ * `storage.getUrl()` link — that link would work for anyone who ever saw it,
+ * with no expiry. The token comes straight from Clerk (the same default
+ * session token ConvexProviderWithClerk already uses), attached as a
+ * standard bearer header a plain `<a href>` can't carry.
+ */
+function DocumentLink({ claimId, type }: { claimId: Id<"claims">; type: DocType }) {
+  const { getToken } = useAuth();
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+
+  const onClick = async () => {
+    setStatus("loading");
+    try {
+      const token = await getToken();
+      const siteUrl = process.env.NEXT_PUBLIC_CONVEX_SITE_URL;
+      const response = await fetch(`${siteUrl}/documents?claimId=${claimId}&type=${type}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+      setStatus("idle");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <>
+      <button type="button" onClick={onClick} disabled={status === "loading"}>
+        {status === "loading" ? "Loading…" : "view"}
+      </button>
+      {status === "error" && <span style={{ marginLeft: 8 }}>Could not load this document.</span>}
+    </>
+  );
+}
 
 function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   const detail = useQuery(api.admin.getClaimDetail, { claimId });
@@ -21,6 +63,13 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   if (detail === undefined) return <p style={{ padding: 24 }}>Loading…</p>;
 
   const onApprove = async () => {
+    if (
+      !window.confirm(
+        "Approve this claim? This publishes the winner publicly and reveals the sealed draw target. This cannot be undone.",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await approve({ claimId });
@@ -47,6 +96,13 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
   };
 
   const onPurge = async () => {
+    if (
+      !window.confirm(
+        "Permanently delete this claim's uploaded documents? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     try {
       await purge({ claimId });
@@ -70,14 +126,7 @@ function ClaimDetail({ claimId }: { claimId: Id<"claims"> }) {
       <ul>
         {detail.documents.map((doc) => (
           <li key={doc.type}>
-            {doc.type}:{" "}
-            {doc.url ? (
-              <a href={doc.url} target="_blank" rel="noreferrer">
-                view
-              </a>
-            ) : (
-              "unavailable"
-            )}
+            {doc.type}: <DocumentLink claimId={claimId} type={doc.type} />
           </li>
         ))}
       </ul>

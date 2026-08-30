@@ -1,8 +1,9 @@
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAdmin } from "./lib/admin.ts";
 import { writeAudit } from "./lib/audit.ts";
 import { commitmentFor } from "./winnerEngine.ts";
+import { documentType } from "./claims.ts";
 
 export const listPendingClaims = query({
   args: {},
@@ -46,18 +47,39 @@ export const getClaimDetail = query({
         .withIndex("by_claim", (q) => q.eq("claimId", claim._id))
         .collect(),
     ]);
-    const documents = await Promise.all(
-      documentRows.map(async (doc) => ({
-        type: doc.type,
-        url: await ctx.storage.getUrl(doc.storageId),
-      })),
-    );
     return {
       claim,
       region: user?.region ?? null,
       birthDate: user?.birthDate ?? null,
-      documents,
+      // No `url` here on purpose: `storage.getUrl()` is an unauthenticated,
+      // non-expiring bearer link once obtained (Convex's own docs are
+      // explicit about this) — a government ID has no business behind one.
+      // The admin UI fetches each document through the authenticated
+      // /documents HTTP action in convex/http.ts instead.
+      documents: documentRows.map((doc) => ({ type: doc.type })),
     };
+  },
+});
+
+/**
+ * The one piece of privileged data the /documents HTTP action (convex/http.ts)
+ * needs: which storage object backs a given claim's document, and its content
+ * type — gated by the same requireAdmin check every other admin function
+ * uses. Internal because nothing outside that HTTP action should ever call
+ * it directly; a bare storageId is not itself fetchable by a client, but
+ * there's no reason to expose it as a public query either.
+ */
+export const getDocumentForServing = internalQuery({
+  args: { claimId: v.id("claims"), type: documentType },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const doc = await ctx.db
+      .query("claimDocuments")
+      .withIndex("by_claim_type", (q) => q.eq("claimId", args.claimId).eq("type", args.type))
+      .unique();
+    if (doc === null) throw new Error("DOCUMENT_NOT_FOUND");
+    const metadata = await ctx.db.system.get(doc.storageId);
+    return { storageId: doc.storageId, contentType: metadata?.contentType ?? null };
   },
 });
 

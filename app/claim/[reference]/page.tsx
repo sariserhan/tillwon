@@ -2,7 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import { useQuery, useMutation, useConvexAuth } from "convex/react";
+import { useQuery, useMutation, useAction, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { DocumentShell } from "@/app/components/DocumentShell";
 import { AuthErrorBoundary } from "@/app/components/AuthErrorBoundary";
@@ -63,7 +63,10 @@ function DocumentField({
   registered: boolean;
 }) {
   const generateUploadUrl = useMutation(api.claims.generateDocumentUploadUrl);
-  const registerDocument = useMutation(api.claims.registerUploadedDocument);
+  // An action, not a mutation: verifying the file's real bytes (not just the
+  // browser's declared Content-Type) needs ctx.storage.get, which mutations
+  // don't have access to.
+  const registerDocument = useAction(api.claims.registerUploadedDocument);
   const [status, setStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 

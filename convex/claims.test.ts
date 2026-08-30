@@ -222,7 +222,7 @@ describe("claims", () => {
       const t = convexTest(schema, modules);
       const { as, reference } = await makeClaimant(t);
       const storageId = await uploadFile(t, as, reference, "image/png", pngBytes);
-      await as.mutation(api.claims.registerUploadedDocument, {
+      await as.action(api.claims.registerUploadedDocument, {
         reference,
         type: "winner_photo",
         storageId: storageId as never,
@@ -237,7 +237,7 @@ describe("claims", () => {
       const { as, reference } = await makeClaimant(t);
       const storageId = await uploadFile(t, as, reference, "text/plain", new TextEncoder().encode("hi"));
       await expect(
-        as.mutation(api.claims.registerUploadedDocument, {
+        as.action(api.claims.registerUploadedDocument, {
           reference,
           type: "photo_id",
           storageId: storageId as never,
@@ -245,13 +245,53 @@ describe("claims", () => {
       ).rejects.toThrow("UNSUPPORTED_FILE_TYPE");
     });
 
+    it("rejects a file whose declared Content-Type lies about its actual bytes", async () => {
+      // The whole point of sniffing the real bytes instead of trusting the
+      // upload's declared header: a caller who lies about the type (here,
+      // claiming "image/png" for plain text) must not slip through just
+      // because the header says so.
+      const t = convexTest(schema, modules);
+      const { as, reference } = await makeClaimant(t);
+      const storageId = await uploadFile(
+        t,
+        as,
+        reference,
+        "image/png",
+        new TextEncoder().encode("not actually a png"),
+      );
+      await expect(
+        as.action(api.claims.registerUploadedDocument, {
+          reference,
+          type: "winner_photo",
+          storageId: storageId as never,
+        }),
+      ).rejects.toThrow("UNSUPPORTED_FILE_TYPE");
+    });
+
+    it("accepts a real PNG even if the upload's declared Content-Type disagrees", async () => {
+      const t = convexTest(schema, modules);
+      const { as, reference } = await makeClaimant(t);
+      const storageId = await uploadFile(t, as, reference, "text/plain", pngBytes);
+      await as.action(api.claims.registerUploadedDocument, {
+        reference,
+        type: "winner_photo",
+        storageId: storageId as never,
+      });
+      const result = await as.query(api.claims.getMyClaim, { reference });
+      expect(result!.documents).toEqual([{ type: "winner_photo" }]);
+    });
+
     it("rejects a file over 10MB", async () => {
       const t = convexTest(schema, modules);
       const { as, reference } = await makeClaimant(t);
+      // A real PNG signature so this fails on size, not on the (now
+      // byte-sniffed) type check — a big block of zero bytes wouldn't sniff
+      // as a PNG at all.
       const big = new Uint8Array(10 * 1024 * 1024 + 1);
+      big.set(pngBytes);
       const storageId = await uploadFile(t, as, reference, "image/png", big);
       await expect(
-        as.mutation(api.claims.registerUploadedDocument, {
+        as.action(api.claims.registerUploadedDocument, {
           reference,
           type: "winner_photo",
           storageId: storageId as never,
@@ -263,13 +303,13 @@ describe("claims", () => {
       const t = convexTest(schema, modules);
       const { as, reference } = await makeClaimant(t);
       const first = await uploadFile(t, as, reference, "image/png", pngBytes);
-      await as.mutation(api.claims.registerUploadedDocument, {
+      await as.action(api.claims.registerUploadedDocument, {
         reference,
         type: "winner_photo",
         storageId: first as never,
       });
       const second = await uploadFile(t, as, reference, "image/png", pngBytes);
-      await as.mutation(api.claims.registerUploadedDocument, {
+      await as.action(api.claims.registerUploadedDocument, {
         reference,
         type: "winner_photo",
         storageId: second as never,
@@ -310,7 +350,7 @@ describe("claims", () => {
       );
 
       await expect(
-        asEve.mutation(api.claims.registerUploadedDocument, {
+        asEve.action(api.claims.registerUploadedDocument, {
           reference,
           type: "winner_photo",
           storageId: storageId as never,
@@ -325,7 +365,7 @@ describe("claims", () => {
       const t = convexTest(schema, modules);
       const { as: asAda, reference: adaReference } = await makeClaimant(t, "clerk_ada");
       const adaStorageId = await uploadFile(t, asAda, adaReference, "image/png", pngBytes);
-      await asAda.mutation(api.claims.registerUploadedDocument, {
+      await asAda.action(api.claims.registerUploadedDocument, {
         reference: adaReference,
         type: "winner_photo",
         storageId: adaStorageId as never,
@@ -336,7 +376,7 @@ describe("claims", () => {
       // already points at — nothing about owning his own claim proves he
       // uploaded that particular file.
       await expect(
-        asBob.mutation(api.claims.registerUploadedDocument, {
+        asBob.action(api.claims.registerUploadedDocument, {
           reference: bobReference,
           type: "winner_photo",
           storageId: adaStorageId as never,
@@ -365,7 +405,7 @@ describe("claims", () => {
       const ctx = await makeClaimant(t, clerkId);
       for (const type of ["photo_id", "proof_of_address", "winner_photo"] as const) {
         const storageId = await uploadFile(t, ctx.as, ctx.reference, "image/png", pngBytes);
-        await ctx.as.mutation(api.claims.registerUploadedDocument, {
+        await ctx.as.action(api.claims.registerUploadedDocument, {
           reference: ctx.reference,
           type,
           storageId: storageId as never,
@@ -513,7 +553,7 @@ describe("claims", () => {
     const t = convexTest(schema, modules);
     const { as, reference } = await makeClaimant(t);
     const storageId = await uploadFile(t, as, reference, "image/png", pngBytes);
-    await as.mutation(api.claims.registerUploadedDocument, {
+    await as.action(api.claims.registerUploadedDocument, {
       reference,
       type: "winner_photo",
       storageId: storageId as never,

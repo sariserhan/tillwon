@@ -90,7 +90,7 @@ async function readyClaim(t: Test) {
 
   for (const type of ["photo_id", "proof_of_address", "winner_photo"] as const) {
     const storageId = await uploadFile(t, as, reference);
-    await as.mutation(api.claims.registerUploadedDocument, { reference, type, storageId: storageId as never });
+    await as.action(api.claims.registerUploadedDocument, { reference, type, storageId: storageId as never });
   }
   await as.mutation(api.claims.submitClaimDocuments, {
     reference,
@@ -129,17 +129,54 @@ describe("admin claim review", () => {
     });
   });
 
-  it("returns document URLs on getClaimDetail for an admin, refuses a non-admin", async () => {
+  it("returns document types (never a raw url) on getClaimDetail for an admin, refuses a non-admin", async () => {
     const t = convexTest(schema, modules);
     const { claim, as } = await readyClaim(t);
     const admin = await asAdmin(t);
     const detail = await admin.query(api.admin.getClaimDetail, { claimId: claim._id });
     expect(detail.documents).toHaveLength(3);
-    for (const doc of detail.documents) expect(typeof doc.url).toBe("string");
+    for (const doc of detail.documents) {
+      expect(typeof doc.type).toBe("string");
+      expect(doc).not.toHaveProperty("url");
+    }
 
     await expect(as.query(api.admin.getClaimDetail, { claimId: claim._id })).rejects.toThrow(
       "NOT_ADMIN",
     );
+  });
+
+  describe("getDocumentForServing", () => {
+    it("returns the storage id and content type for an admin, refuses a non-admin", async () => {
+      const t = convexTest(schema, modules);
+      const { claim, as } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      const doc = await t.run((ctx) =>
+        ctx.db
+          .query("claimDocuments")
+          .withIndex("by_claim_type", (q) => q.eq("claimId", claim._id).eq("type", "winner_photo"))
+          .unique(),
+      );
+      const result = await admin.query(internal.admin.getDocumentForServing, {
+        claimId: claim._id,
+        type: "winner_photo",
+      });
+      expect(result).toEqual({ storageId: doc!.storageId, contentType: "image/png" });
+
+      await expect(
+        as.query(internal.admin.getDocumentForServing, { claimId: claim._id, type: "winner_photo" }),
+      ).rejects.toThrow("NOT_ADMIN");
+    });
+
+    it("throws DOCUMENT_NOT_FOUND for a document type never uploaded", async () => {
+      const t = convexTest(schema, modules);
+      const { claim } = await readyClaim(t);
+      const admin = await asAdmin(t);
+      await admin.mutation(api.admin.rejectClaim, { claimId: claim._id, reason: "test" });
+      await admin.mutation(api.admin.purgeClaimDocuments, { claimId: claim._id });
+      await expect(
+        admin.query(internal.admin.getDocumentForServing, { claimId: claim._id, type: "winner_photo" }),
+      ).rejects.toThrow("DOCUMENT_NOT_FOUND");
+    });
   });
 
   describe("approveClaim", () => {

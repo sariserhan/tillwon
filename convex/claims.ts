@@ -1,7 +1,9 @@
-import { mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireUser } from "./users.ts";
 import { writeAudit } from "./lib/audit.ts";
+import { sniffFileType } from "./lib/fileSniff.ts";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
@@ -10,7 +12,7 @@ const MAX_NAME_LENGTH = 120;
 const ID_AND_ADDRESS_TYPES = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png"]);
 
-const documentType = v.union(
+export const documentType = v.union(
   v.literal("photo_id"),
   v.literal("proof_of_address"),
   v.literal("winner_photo"),
@@ -69,8 +71,38 @@ export const generateDocumentUploadUrl = mutation({
   },
 });
 
-export const registerUploadedDocument = mutation({
-  args: { reference: v.string(), type: documentType, storageId: v.id("_storage") },
+/**
+ * A cheap, read-only ownership+status gate `registerUploadedDocument`'s
+ * action runs before it ever reads storage bytes — actions have no `ctx.db`,
+ * so this is the only way to short-circuit an unauthorized or out-of-state
+ * call before doing the (bounded but non-trivial) work of fetching and
+ * sniffing a file. `finalizeDocumentRegistration` re-checks both
+ * authoritatively inside its own transaction; this is an optimization, not
+ * the security boundary.
+ */
+export const checkClaimSubmittable = internalQuery({
+  args: { reference: v.string() },
+  handler: async (ctx, args) => {
+    const owned = await requireOwnedClaim(ctx, args.reference);
+    if (owned === null) throw new Error("CLAIM_NOT_FOUND");
+    if (owned.claim.status !== "potential_winner") throw new Error("CLAIM_NOT_SUBMITTABLE");
+    return null;
+  },
+});
+
+/**
+ * The actual write, run only after `registerUploadedDocument` (below) has
+ * sniffed the file's real bytes — everything ctx.db-shaped from the old
+ * single mutation lives here, re-checking ownership/status itself rather
+ * than trusting the action's earlier, non-transactional pre-check.
+ */
+export const finalizeDocumentRegistration = internalMutation({
+  args: {
+    reference: v.string(),
+    type: documentType,
+    storageId: v.id("_storage"),
+    sniffedType: v.union(v.string(), v.null()),
+  },
   handler: async (ctx, args) => {
     const owned = await requireOwnedClaim(ctx, args.reference);
     if (owned === null) throw new Error("CLAIM_NOT_FOUND");
@@ -89,14 +121,17 @@ export const registerUploadedDocument = mutation({
       throw new Error("STORAGE_ALREADY_REGISTERED");
     }
 
-    const metadata = await ctx.db.system.get(args.storageId);
-    if (metadata === null) throw new Error("UPLOAD_NOT_FOUND");
-
+    // Identified from the file's own bytes (see registerUploadedDocument),
+    // not the client-declared upload Content-Type header — the whole point
+    // of this check is that the caller's own assertion proves nothing.
     const allowed = args.type === "winner_photo" ? PHOTO_TYPES : ID_AND_ADDRESS_TYPES;
-    if (metadata.contentType === undefined || !allowed.has(metadata.contentType)) {
+    if (args.sniffedType === null || !allowed.has(args.sniffedType)) {
       await ctx.storage.delete(args.storageId);
       throw new Error("UNSUPPORTED_FILE_TYPE");
     }
+
+    const metadata = await ctx.db.system.get(args.storageId);
+    if (metadata === null) throw new Error("UPLOAD_NOT_FOUND");
     if (metadata.size > MAX_BYTES) {
       await ctx.storage.delete(args.storageId);
       throw new Error("FILE_TOO_LARGE");
@@ -125,6 +160,31 @@ export const registerUploadedDocument = mutation({
       entityType: "claims",
       entityId: owned.claim._id,
       metadata: { type: args.type },
+    });
+    return null;
+  },
+});
+
+/**
+ * An action, not a mutation, because verifying a file's real type means
+ * reading its actual bytes (`ctx.storage.get`) — only available where
+ * `ctx.db` isn't, so the ownership/status gate and the actual write both
+ * live in internal functions this delegates to.
+ */
+export const registerUploadedDocument = action({
+  args: { reference: v.string(), type: documentType, storageId: v.id("_storage") },
+  handler: async (ctx, args): Promise<null> => {
+    await ctx.runQuery(internal.claims.checkClaimSubmittable, { reference: args.reference });
+
+    const blob = await ctx.storage.get(args.storageId);
+    if (blob === null) throw new Error("UPLOAD_NOT_FOUND");
+    const sniffedType = sniffFileType(new Uint8Array(await blob.arrayBuffer()));
+
+    await ctx.runMutation(internal.claims.finalizeDocumentRegistration, {
+      reference: args.reference,
+      type: args.type,
+      storageId: args.storageId,
+      sniffedType,
     });
     return null;
   },
