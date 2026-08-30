@@ -43,6 +43,45 @@ async function uniqueSponsorSlug(ctx: MutationCtx, base: string): Promise<string
   return candidate;
 }
 
+function validateCampaignTitle(rawTitle: string): string {
+  const title = rawTitle.trim();
+  if (title.length === 0) throw new Error("CAMPAIGN_TITLE_REQUIRED");
+  if (title.length > MAX_NAME_LENGTH) throw new Error("CAMPAIGN_TITLE_TOO_LONG");
+  return title;
+}
+
+/** Shared by createDraftCampaign and updateDraftCampaign — returns the resolved shardCount. */
+function validateCampaignSchedule(args: {
+  dailySpins: number;
+  resetHour: number;
+  resetTimezone: string;
+  targetVolume: number;
+  shardCount?: number;
+}): number {
+  if (!Number.isInteger(args.dailySpins) || args.dailySpins <= 0) {
+    throw new Error("DAILY_SPINS_INVALID");
+  }
+  if (!Number.isInteger(args.resetHour) || args.resetHour < 0 || args.resetHour > 23) {
+    throw new Error("RESET_HOUR_INVALID");
+  }
+  // resetDate.ts's resetDateKey already assumes a valid IANA name on every
+  // single spin — catching a bad one here, once, is much cheaper than letting
+  // it crash the first spin on the campaign instead.
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: args.resetTimezone });
+  } catch {
+    throw new Error("INVALID_TIMEZONE");
+  }
+  if (!Number.isInteger(args.targetVolume) || args.targetVolume <= 0) {
+    throw new Error("TARGET_VOLUME_INVALID");
+  }
+  const shardCount = args.shardCount ?? DEFAULT_SHARD_COUNT;
+  if (!Number.isInteger(shardCount) || shardCount <= 0) {
+    throw new Error("SHARD_COUNT_INVALID");
+  }
+  return shardCount;
+}
+
 const prizeArg = v.union(
   v.object({
     kind: v.literal("existing"),
@@ -100,9 +139,7 @@ export const createDraftCampaign = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
 
-    const title = args.title.trim();
-    if (title.length === 0) throw new Error("CAMPAIGN_TITLE_REQUIRED");
-    if (title.length > MAX_NAME_LENGTH) throw new Error("CAMPAIGN_TITLE_TOO_LONG");
+    const title = validateCampaignTitle(args.title);
 
     let sponsorId;
     let prizeId;
@@ -161,28 +198,7 @@ export const createDraftCampaign = mutation({
       prizeValueCents = args.prize.estimatedRetailValueCents;
     }
 
-    if (!Number.isInteger(args.dailySpins) || args.dailySpins <= 0) {
-      throw new Error("DAILY_SPINS_INVALID");
-    }
-    if (!Number.isInteger(args.resetHour) || args.resetHour < 0 || args.resetHour > 23) {
-      throw new Error("RESET_HOUR_INVALID");
-    }
-    // resetDate.ts's resetDateKey already assumes a valid IANA name on every
-    // single spin — catching a bad one here, once, is much cheaper than letting
-    // it crash the first spin on the campaign instead.
-    try {
-      new Intl.DateTimeFormat("en-US", { timeZone: args.resetTimezone });
-    } catch {
-      throw new Error("INVALID_TIMEZONE");
-    }
-
-    if (!Number.isInteger(args.targetVolume) || args.targetVolume <= 0) {
-      throw new Error("TARGET_VOLUME_INVALID");
-    }
-    const shardCount = args.shardCount ?? DEFAULT_SHARD_COUNT;
-    if (!Number.isInteger(shardCount) || shardCount <= 0) {
-      throw new Error("SHARD_COUNT_INVALID");
-    }
+    const shardCount = validateCampaignSchedule(args);
 
     const reelColumns = resolveTier(prizeValueCents).columns;
     const campaignSlug = await uniqueCampaignSlug(ctx, slugify(title));
