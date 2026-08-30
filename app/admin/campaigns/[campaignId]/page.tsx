@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useAction, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -13,8 +13,12 @@ const REGISTRATION_THRESHOLD_CENTS = 500_000;
 function CampaignDetail({ campaignId }: { campaignId: Id<"campaigns"> }) {
   const detail = useQuery(api.campaignAdmin.getCampaignDetail, { campaignId });
   const activate = useAction(api.campaignAdmin.activate);
+  const suspendCampaign = useMutation(api.campaignAdmin.suspendCampaign);
+  const resumeCampaign = useMutation(api.campaignAdmin.resumeCampaign);
+  const cancelCampaign = useMutation(api.campaignAdmin.cancelCampaign);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
   const router = useRouter();
 
   if (detail === undefined) return <p style={{ padding: 24 }}>Loading…</p>;
@@ -36,6 +40,54 @@ function CampaignDetail({ campaignId }: { campaignId: Id<"campaigns"> }) {
       router.push("/admin");
     } catch (e) {
       setMessage(friendlyErrorMessage(e, "Activation failed."));
+      setBusy(false);
+    }
+  };
+
+  const onSuspend = async () => {
+    if (!window.confirm("Suspend this campaign? Spins stop immediately until it's resumed.")) {
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await suspendCampaign({ campaignId, reason: reason.trim() || undefined });
+      setReason("");
+    } catch (e) {
+      setMessage(friendlyErrorMessage(e, "Could not suspend the campaign."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onResume = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await resumeCampaign({ campaignId });
+    } catch (e) {
+      setMessage(friendlyErrorMessage(e, "Could not resume the campaign."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onCancel = async () => {
+    if (
+      !window.confirm(
+        "Cancel this campaign? This is permanent and stops the draw for good — it cannot be resumed.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await cancelCampaign({ campaignId, reason: reason.trim() || undefined });
+      setReason("");
+    } catch (e) {
+      setMessage(friendlyErrorMessage(e, "Could not cancel the campaign."));
+    } finally {
       setBusy(false);
     }
   };
@@ -71,6 +123,35 @@ function CampaignDetail({ campaignId }: { campaignId: Id<"campaigns"> }) {
         <button type="button" onClick={onActivate} disabled={busy} style={{ marginTop: 16 }}>
           {busy ? "Activating…" : "Activate"}
         </button>
+      )}
+
+      {(campaign.status === "live" || campaign.status === "suspended") && (
+        <div style={{ marginTop: 16 }}>
+          <label style={{ display: "block" }}>
+            Reason (optional, recorded in the audit log)
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              style={{ display: "block", width: "100%" }}
+            />
+          </label>
+          <div style={{ marginTop: 8 }}>
+            {campaign.status === "live" && (
+              <button type="button" onClick={onSuspend} disabled={busy}>
+                {busy ? "Working…" : "Suspend"}
+              </button>
+            )}
+            {campaign.status === "suspended" && (
+              <button type="button" onClick={onResume} disabled={busy}>
+                {busy ? "Working…" : "Resume"}
+              </button>
+            )}
+            <button type="button" onClick={onCancel} disabled={busy} style={{ marginLeft: 8 }}>
+              {busy ? "Working…" : "Cancel campaign"}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
