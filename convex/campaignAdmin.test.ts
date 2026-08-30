@@ -606,3 +606,228 @@ describe("cancelCampaign", () => {
     );
   });
 });
+
+const UPDATED_CAMPAIGN_ARGS = {
+  title: "Fall Giveaway (revised)",
+  description: "A revised description",
+  dailySpins: 20,
+  resetTimezone: "America/Los_Angeles",
+  resetHour: 6,
+  targetVolume: 2000,
+  disqualificationPolicy: "end_campaign" as const,
+  rulesContent: "Revised official rules text.",
+};
+
+describe("updateDraftCampaign", () => {
+  it("updates a draft campaign's fields and its rules content", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await admin.mutation(api.campaignAdmin.updateDraftCampaign, {
+      campaignId,
+      ...UPDATED_CAMPAIGN_ARGS,
+    });
+
+    const { campaign, rules } = await t.run(async (ctx) => {
+      const campaign = (await ctx.db.get(campaignId))!;
+      const rules = await ctx.db
+        .query("campaignRules")
+        .withIndex("by_campaign_version", (q) => q.eq("campaignId", campaignId).eq("version", 1))
+        .unique();
+      return { campaign, rules };
+    });
+
+    expect(campaign.title).toBe("Fall Giveaway (revised)");
+    expect(campaign.description).toBe("A revised description");
+    expect(campaign.dailySpins).toBe(20);
+    expect(campaign.resetTimezone).toBe("America/Los_Angeles");
+    expect(campaign.resetHour).toBe(6);
+    expect(campaign.projectedVolume).toBe(2000);
+    expect(campaign.oddsDenominator).toBe(2000);
+    expect(campaign.disqualificationPolicy).toBe("end_campaign");
+    expect(rules!.content).toBe("Revised official rules text.");
+  });
+
+  it("does not change the campaign's slug or prize/sponsor", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const before = (await t.run((ctx) => ctx.db.get(campaignId)))!;
+
+    await admin.mutation(api.campaignAdmin.updateDraftCampaign, {
+      campaignId,
+      ...UPDATED_CAMPAIGN_ARGS,
+    });
+
+    const after = (await t.run((ctx) => ctx.db.get(campaignId)))!;
+    expect(after.slug).toBe(before.slug);
+    expect(after.prizeId).toBe(before.prizeId);
+    expect(after.sponsorId).toBe(before.sponsorId);
+  });
+
+  it("refuses to update a campaign that isn't a draft", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+
+    await expect(
+      admin.mutation(api.campaignAdmin.updateDraftCampaign, {
+        campaignId,
+        ...UPDATED_CAMPAIGN_ARGS,
+      }),
+    ).rejects.toThrow("CAMPAIGN_NOT_DRAFT");
+  });
+
+  it("validates fields the same way createDraftCampaign does", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await expect(
+      admin.mutation(api.campaignAdmin.updateDraftCampaign, {
+        campaignId,
+        ...UPDATED_CAMPAIGN_ARGS,
+        title: "   ",
+      }),
+    ).rejects.toThrow("CAMPAIGN_TITLE_REQUIRED");
+
+    await expect(
+      admin.mutation(api.campaignAdmin.updateDraftCampaign, {
+        campaignId,
+        ...UPDATED_CAMPAIGN_ARGS,
+        resetTimezone: "Not/A_Real_Zone",
+      }),
+    ).rejects.toThrow("INVALID_TIMEZONE");
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(
+      as.mutation(api.campaignAdmin.updateDraftCampaign, { campaignId, ...UPDATED_CAMPAIGN_ARGS }),
+    ).rejects.toThrow("NOT_ADMIN");
+  });
+
+  it("writes an audit entry", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await admin.mutation(api.campaignAdmin.updateDraftCampaign, {
+      campaignId,
+      ...UPDATED_CAMPAIGN_ARGS,
+    });
+
+    const entries = await t.run((ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+        .collect(),
+    );
+    expect(entries.some((e) => e.action === "campaign.updated")).toBe(true);
+  });
+});
+
+describe("deleteDraftCampaign", () => {
+  it("deletes a draft campaign and its rules row", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await admin.mutation(api.campaignAdmin.deleteDraftCampaign, { campaignId });
+
+    const [campaign, rules] = await t.run(async (ctx) => [
+      await ctx.db.get(campaignId),
+      await ctx.db
+        .query("campaignRules")
+        .withIndex("by_campaign_version", (q) => q.eq("campaignId", campaignId))
+        .collect(),
+    ]);
+    expect(campaign).toBeNull();
+    expect(rules).toHaveLength(0);
+  });
+
+  it("does not delete the sponsor or prize", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const campaign = (await t.run((ctx) => ctx.db.get(campaignId)))!;
+
+    await admin.mutation(api.campaignAdmin.deleteDraftCampaign, { campaignId });
+
+    const [sponsor, prize] = await t.run(async (ctx) => [
+      await ctx.db.get(campaign.sponsorId),
+      await ctx.db.get(campaign.prizeId),
+    ]);
+    expect(sponsor).not.toBeNull();
+    expect(prize).not.toBeNull();
+  });
+
+  it("refuses to delete a campaign that isn't a draft", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await createAndActivate(t, admin);
+
+    await expect(
+      admin.mutation(api.campaignAdmin.deleteDraftCampaign, { campaignId }),
+    ).rejects.toThrow("CAMPAIGN_NOT_DRAFT");
+  });
+
+  it("refuses a non-admin caller", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+    const as = t.withIdentity({ subject: "clerk_user", email: "user@example.com" });
+    await as.mutation(api.users.ensureUser, {});
+    await expect(as.mutation(api.campaignAdmin.deleteDraftCampaign, { campaignId })).rejects.toThrow(
+      "NOT_ADMIN",
+    );
+  });
+
+  it("writes an audit entry", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await asAdmin(t);
+    const campaignId = await admin.mutation(api.campaignAdmin.createDraftCampaign, {
+      ...CAMPAIGN_ARGS,
+      prize: NEW_PRIZE_ARGS,
+    });
+
+    await admin.mutation(api.campaignAdmin.deleteDraftCampaign, { campaignId });
+
+    const entries = await t.run((ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_entity", (q) => q.eq("entityType", "campaigns").eq("entityId", campaignId))
+        .collect(),
+    );
+    expect(entries.some((e) => e.action === "campaign.deleted")).toBe(true);
+  });
+});

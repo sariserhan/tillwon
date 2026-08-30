@@ -250,6 +250,110 @@ export const createDraftCampaign = mutation({
   },
 });
 
+/**
+ * Only fields that can't affect an already-sealed target or a prize the admin
+ * may have picked deliberately: prize/sponsor selection stays fixed once set —
+ * changing it mid-draft is rare enough that delete-and-recreate covers it
+ * without this mutation needing to re-derive reelColumns or reassign a prize.
+ * The slug is likewise left alone; nothing has linked to it yet since the
+ * campaign was never live, so there's nothing to keep stable, but regenerating
+ * it here would just add a slug-collision case with no benefit.
+ */
+export const updateDraftCampaign = mutation({
+  args: {
+    campaignId: v.id("campaigns"),
+    title: v.string(),
+    description: v.string(),
+    dailySpins: v.number(),
+    resetTimezone: v.string(),
+    resetHour: v.number(),
+    targetVolume: v.number(),
+    shardCount: v.optional(v.number()),
+    disqualificationPolicy: v.union(
+      v.literal("resume_campaign"),
+      v.literal("select_alternate"),
+      v.literal("end_campaign"),
+    ),
+    rulesContent: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    if (campaign.status !== "draft") throw new Error("CAMPAIGN_NOT_DRAFT");
+
+    const title = validateCampaignTitle(args.title);
+    const shardCount = validateCampaignSchedule(args);
+
+    await ctx.db.patch(args.campaignId, {
+      title,
+      description: args.description,
+      dailySpins: args.dailySpins,
+      resetTimezone: args.resetTimezone,
+      resetHour: args.resetHour,
+      projectedVolume: args.targetVolume,
+      oddsDenominator: args.targetVolume,
+      shardCount,
+      disqualificationPolicy: args.disqualificationPolicy,
+    });
+
+    const rules = await ctx.db
+      .query("campaignRules")
+      .withIndex("by_campaign_version", (q) => q.eq("campaignId", args.campaignId).eq("version", 1))
+      .unique();
+    if (rules !== null) {
+      await ctx.db.patch(rules._id, {
+        content: args.rulesContent,
+        oddsStatement: `Stated odds of ${formatOdds(args.targetVolume)} are based on the expected number of eligible entries; actual odds depend on the total entries received.`,
+      });
+    }
+
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "campaign.updated",
+      entityType: "campaigns",
+      entityId: args.campaignId,
+      before: { title: campaign.title, targetVolume: campaign.projectedVolume },
+      after: { title, targetVolume: args.targetVolume },
+    });
+
+    return null;
+  },
+});
+
+export const deleteDraftCampaign = mutation({
+  args: { campaignId: v.id("campaigns") },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const campaign = await ctx.db.get(args.campaignId);
+    if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
+    if (campaign.status !== "draft") throw new Error("CAMPAIGN_NOT_DRAFT");
+
+    const rules = await ctx.db
+      .query("campaignRules")
+      .withIndex("by_campaign_version", (q) => q.eq("campaignId", args.campaignId))
+      .collect();
+    for (const rule of rules) {
+      await ctx.db.delete(rule._id);
+    }
+    await ctx.db.delete(args.campaignId);
+
+    // sponsorId/prizeId deliberately left alone — either may be reused by
+    // another campaign (createDraftCampaign's "existing" prize path).
+    await writeAudit(ctx, {
+      actorType: "admin",
+      actorId: admin._id,
+      action: "campaign.deleted",
+      entityType: "campaigns",
+      entityId: args.campaignId,
+      before: { title: campaign.title, status: campaign.status },
+    });
+
+    return null;
+  },
+});
+
 export const listPrizes = query({
   args: {},
   handler: async (ctx) => {
