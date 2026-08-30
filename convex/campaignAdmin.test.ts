@@ -322,6 +322,7 @@ describe("getCampaignDetail", () => {
     expect(detail.sponsorName).toBe("Acme Corp");
     expect(detail.prizeTitle).toBe("$100 Gift Card");
     expect(detail.prizeValueCents).toBe(10_000);
+    expect(detail.rulesContent).toBe("Official rules text.");
   });
 
   it("refuses a non-admin caller", async () => {

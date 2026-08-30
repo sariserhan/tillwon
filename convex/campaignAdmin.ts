@@ -404,15 +404,20 @@ export const getCampaignDetail = query({
     await requireAdmin(ctx);
     const campaign = await ctx.db.get(args.campaignId);
     if (campaign === null) throw new Error("CAMPAIGN_NOT_FOUND");
-    const [sponsor, prize] = await Promise.all([
+    const [sponsor, prize, rules] = await Promise.all([
       ctx.db.get(campaign.sponsorId),
       ctx.db.get(campaign.prizeId),
+      ctx.db
+        .query("campaignRules")
+        .withIndex("by_campaign_version", (q) => q.eq("campaignId", args.campaignId).eq("version", 1))
+        .unique(),
     ]);
     return {
       campaign,
       sponsorName: sponsor?.name ?? null,
       prizeTitle: prize?.title ?? null,
       prizeValueCents: prize?.estimatedRetailValue ?? null,
+      rulesContent: rules?.content ?? "",
     };
   },
 });
