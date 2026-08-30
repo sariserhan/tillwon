@@ -25,6 +25,28 @@ Working todo list for TillWon. Checked items are done and on `main`.
 
 - **`endAt` (tier 5-6 hard end date) is unenforced.** `convex/schema.ts` has the field, `spinExecute` never reads it, and there's no cron in this project — a tier 5-6 campaign would spin forever past any stated end date. `PRODUCT.md` frames this as a hard legal requirement (surety bond can't stay outstanding indefinitely), but building it raised a real conflict with the "till won" promise (does an unwon tier 5-6 campaign ever end without awarding its prize, or does something guarantee a winner by the deadline — a materially bigger mechanism). Discussed and deferred rather than guessed at: no deadline enforcement gets built until this is actually resolved, which likely needs the counsel review `PRODUCT.md` already says is pending for tiers 5-6 generally.
 
+## To finish the product (2026-08-30 gap audit)
+
+Full audit of PRODUCT.md/DESIGN.md against what's actually built, done after the
+campaign-admin work above. Ranked by what blocks a real user completing a
+spin-to-claim cycle vs. what matters for the business but not that cycle.
+
+**Blocks launch — not engineering work:**
+- [ ] **All legal copy is unreviewed.** Every `/legal/[slug]` page and `/rules` explicitly self-stamps DRAFT/not-reviewed-by-counsel (`app/legal/content.ts:28`, `app/rules/page.tsx:307-313`). No code change closes this. Largest single blocker to accepting real entries.
+- [ ] **`endAt` (tier 5-6 hard end date)** — see "Looked into, deferred" above. Same counsel-review blocker.
+
+**Blocks the claim flow from being genuinely usable — real engineering, ready to scope:**
+- [ ] **No email/SMS notifications anywhere.** A winner only finds out by manually reloading `/claim/[reference]`. `users.marketingConsent`/`dailyReminderConsent` are collected at signup (`convex/users.ts:46-47`) but never read by anything; the unused claim statuses `notification_sent`/`documents_requested` (`convex/schema.ts:220-223`) confirm this was planned but never built. Needs a provider decision (Resend fits the existing Vercel setup) before implementation.
+- [ ] **No prize fulfillment tracking after approval.** `prize_processing`/`prize_shipped`/`prize_delivered`/`completed` are defined statuses nothing ever sets (`admin.ts` only drives claims to `approved`/`rejected`/`more_info_required`). Once a prize is approved, the audit trail stops exactly where a high-value prize's paper trail matters most. No external dependency — ready to build now.
+
+**Matters for the business, not for a single user's spin-to-claim cycle — engineering, ready to build:**
+- [ ] **No sponsor reporting.** `app/sponsor/[slug]/page.tsx:96-101` actually *promises* aggregate reporting in its own copy ("totals, rates and distributions") — nothing computes it. Sponsors are the paying customer per PRODUCT.md, so this is a real go-to-market gap.
+- [ ] **No admin analytics/reporting dashboard** beyond flat lists (`/admin` is two plain HTML tables) — spin volume, conversion funnel, campaign performance. Same underlying data as sponsor reporting above.
+
+**Hardening, not blockers:**
+- [ ] **No anti-abuse beyond the daily spin cap** — no rate limiting, device fingerprinting, or velocity checks in `spins.ts`/`eligibility.ts`. Multi-accounting to farm extra spins is unmitigated. Low urgency pre-launch.
+- [ ] **Zero frontend tests.** Backend has 160 solid Convex tests; the UI (spin animation, RulesGate, claim upload, admin forms) is only type-checked and shape-reviewed, never actually tested.
+
 ## Before real claimants use this (pre-production gate)
 
 Nothing here blocks merging further work, but none of it should ship to real users until done. Full detail and file:line references in `.superpowers/sdd/2026-08-30-claim-verification/final-review.md` (in git history — the branch was merged and deleted, so pull that file from commit history if the worktree is gone).
@@ -50,3 +72,10 @@ Nothing here blocks merging further work, but none of it should ship to real use
 ## Notes
 
 - The `fallback` git remote (GitLab) has a completely unrelated, older history — not synced with `origin` (GitHub), and not part of this roadmap unless that mirror needs to be kept current.
+
+
+Go to:
+
+    https://dashboard.convex.dev/d/mild-partridge-337/settings/environment-variables?var=CLERK_JWT_ISSUER_DOMAIN
+
+  to set it up. 
