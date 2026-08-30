@@ -26,6 +26,7 @@ import type * as lib_tiers from "../lib/tiers.js";
 import type * as rules from "../rules.js";
 import type * as seed from "../seed.js";
 import type * as spins from "../spins.js";
+import type * as userAdmin from "../userAdmin.js";
 import type * as users from "../users.js";
 import type * as winnerEngine from "../winnerEngine.js";
 import type * as winners from "../winners.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   rules: typeof rules;
   seed: typeof seed;
   spins: typeof spins;
+  userAdmin: typeof userAdmin;
   users: typeof users;
   winnerEngine: typeof winnerEngine;
   winners: typeof winners;
