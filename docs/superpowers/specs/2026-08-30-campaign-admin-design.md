@@ -1,7 +1,12 @@
 # Campaign Admin (Launch a New Campaign) — Design
 
-**Status:** approved by the user in chat, section by section; being written up here per
-`superpowers:brainstorming`'s architectural path before planning.
+**Status:** approved by the user in chat, section by section; then reviewed by the
+user against the written spec, who found three real issues (an unsafe race on
+single-active-campaign enforcement, a non-atomic multi-mutation creation flow, and
+`endAt` being recorded without being either enforced or honestly described as
+inert) plus one smaller one (`resetTimezone` accepting any string). All four are
+fixed below — see "Revised after user spec review" at the end for exactly what
+changed and why.
 
 **Spec:** builds on `docs/superpowers/specs/2026-08-06-tillwon-design.md` (the original
 product design) and `docs/superpowers/specs/2026-08-30-claim-verification-design.md`
@@ -45,20 +50,31 @@ forgotten — noted so this doesn't quietly become a bigger project):
   that list encodes real, already-researched legal reasoning (Tennessee's
   publicity-consent law, Alabama/Nebraska/Mississippi's age floors, etc.) that a
   free-form picker could silently violate.
-- **`endAt` enforcement.** Already tracked as deferred in `ROADMAP.md` — this build
-  lets an admin *record* an optional `endAt` for documentation purposes on a tier 5-6
-  campaign, but nothing enforces it, and the form says so.
-- **Sponsor reuse.** Every campaign gets a freshly created sponsor row (see Decisions).
+- **`endAt` entirely.** Not a form field, not a `createDraftCampaign` argument. The
+  schema field stays (already there, optional, already unused before this build) but
+  this build does not expose it. A field an admin can fill in that the runtime
+  silently ignores is worse than no field at all, especially for a number with
+  potential Official Rules significance — see "Revised after user spec review."
+  `ROADMAP.md`'s deferred `endAt`-enforcement item is unchanged by this decision;
+  when that gets resolved, exposing it here is a small follow-up, not a redesign.
+- **Sponsor reuse.** A freshly created sponsor row happens only on the "new prize"
+  path (see Decisions and "Revised after user spec review") — reusing an existing
+  prize reuses its existing sponsor too, since a prize belongs to exactly one
+  sponsor (`prizes.sponsorId`).
 - **Traffic-estimation modeling.** No "expected visitors × days" calculator — the
   admin enters the target volume directly (see Decisions, "one number, not two").
 
 ## Decisions (from user Q&A during brainstorming)
 
-1. **Sponsor: always create new**, never reuse an existing one. One form, one flow —
-   no sponsor picker/dropdown.
+1. **Sponsor: always create new when the prize is new** — revised after user spec
+   review: a prize belongs to exactly one sponsor (`prizes.sponsorId`), so *reusing*
+   a prize necessarily reuses its sponsor too; there is no path that attaches a
+   freshly created sponsor to a reused prize. "Always create new" describes the
+   new-prize path, not a blanket rule independent of prize reuse.
 2. **Prize: create new, or pick an existing one.** A prize can legitimately recur
    (the same gift card offered again); a sponsor relationship, per this product's
-   current stage, does not.
+   current stage, does not — see Decision 1's revision for exactly how these two
+   compose.
 3. **`projectedVolume` and `oddsDenominator` are the same number, not two.** Schema
    comment: `projectedVolume: v.number(), // must equal oddsDenominator`
    (`convex/schema.ts`), and `convex/seed.ts` confirms it in practice:
@@ -76,11 +92,14 @@ forgotten — noted so this doesn't quietly become a bigger project):
    action** that seals the target. Avoids ever having a "live but unsealed" window
    (which the current CLI flow technically permits between `seedCampaign` and
    `activateCampaign` running back to back), and gives the admin a review point
-   before the one truly irreversible step.
+   before the one truly irreversible step. Revised after user spec review: "only one
+   campaign live at a time" is enforced *inside* the same transaction that flips
+   `draft → live` (`sealTarget`), not as a separate pre-check an action runs before
+   calling it — see "Revised after user spec review."
 7. **Tier 5-6 (prize ≥ `REGISTRATION_THRESHOLD_CENTS`, $5,000): allowed, with a
    warning**, not blocked outright. The warning names the real, currently-unaddressed
-   gap (`ROADMAP.md`'s deferred `endAt` enforcement item) rather than silently
-   allowing or silently refusing.
+   gap (`ROADMAP.md`'s deferred `endAt`-enforcement item) in prose — it does not
+   reference an `endAt` field, since this build doesn't expose one (see Scope).
 
 ## Data model
 
@@ -96,79 +115,57 @@ Mirrors `convex/admin.ts`'s conventions exactly: every mutation starts with
 any write (never assumed), and doc comments explain the non-obvious *why*, not the
 *what*.
 
-### `createSponsor`
-
-```typescript
-args: {
-  name: v.string(),
-  websiteUrl: v.string(),
-  ctaLabel: v.string(),
-  ctaUrl: v.string(),
-  description: v.string(),
-  contactName: v.string(),
-  contactEmail: v.string(),
-}
-returns: v.id("sponsors")
-```
-
-- `requireAdmin(ctx)`.
-- `name` trimmed, non-empty, capped (reuse the 120-char convention `claims.ts`
-  already established for `legalName` — `SPONSOR_NAME_MAX_LENGTH = 120`), throws
-  `SPONSOR_NAME_REQUIRED` / `SPONSOR_NAME_TOO_LONG`.
-- `slug`: derived from `name` (lowercase, non-alphanumeric runs collapsed to a single
-  `-`, trimmed of leading/trailing `-`), then de-duplicated: if a sponsor with that
-  slug already exists, append `-2`, `-3`, ... until unique. (`sponsors.by_slug` index
-  already exists for this lookup.) Slug is never a user-facing form field — this
-  mirrors how `campaigns.slug` is already just a URL-safe identifier, not a marketing
-  surface.
-- Insert with `status: "active"`. No `logoStorageId` / `brandColor` in this build (no
-  image upload — see Scope).
-- `writeAudit`: `actorType: "admin"`, `action: "sponsor.created"`,
-  `entityType: "sponsors"`, `entityId: <new id>`, `after: { name, slug }`.
-- Returns the new sponsor's `_id` so the campaign-creation form can chain into it.
-
-### `createPrize`
-
-```typescript
-args: {
-  title: v.string(),
-  description: v.string(),
-  estimatedRetailValueCents: v.number(),
-  currency: v.optional(v.string()), // defaults to "USD"
-  quantity: v.optional(v.number()), // defaults to 1
-  fulfillmentType: v.union(v.literal("physical"), v.literal("digital"), v.literal("experience")),
-  fulfillmentNotes: v.string(),
-  sponsorId: v.id("sponsors"),
-}
-returns: v.id("prizes")
-```
-
-- `requireAdmin(ctx)`.
-- `title` trimmed, non-empty, capped at 120 chars — same convention, throws
-  `PRIZE_TITLE_REQUIRED` / `PRIZE_TITLE_TOO_LONG`.
-- `estimatedRetailValueCents` must be a positive integer — throws
-  `PRIZE_VALUE_INVALID` (mirrors `sealTarget`'s existing
-  `Number.isInteger(...) && ... > 0` style range checks in `winnerEngine.ts`).
-- `quantity` must be a positive integer if provided; defaults to `1`.
-- Verify `sponsorId` resolves to a real, `status: "active"` sponsor — throws
-  `SPONSOR_NOT_FOUND` otherwise (a prize with no valid sponsor is exactly the kind of
-  dangling reference `claims.ts`'s "a reference alone is never authorization"
-  discipline generalizes to: never insert a foreign key without confirming what it
-  points to first).
-- Insert with `imageStorageIds: []` (see Scope).
-- `writeAudit`: `actorType: "admin"`, `action: "prize.created"`,
-  `entityType: "prizes"`, `entityId: <new id>`,
-  `after: { title, estimatedRetailValueCents, sponsorId }`.
-- Returns the new prize's `_id`.
-
 ### `createDraftCampaign`
 
+**One mutation, one transaction** — revised after user spec review from an earlier
+draft of this spec that had three separate mutations (`createSponsor`, `createPrize`,
+`createDraftCampaign`) called in sequence from the client, explicitly accepting that
+a failure partway through could leave an orphaned sponsor or prize row. There is no
+real benefit to that sequencing happening client-side: a single Convex mutation is
+already one atomic transaction regardless of how many `ctx.db.insert` calls it makes
+internally, so folding sponsor/prize creation into this one mutation gets atomicity
+for free. `createSponsor` and `createPrize` are **not separate exported mutations**
+in this design — they're private helper functions in the same file, called only from
+here.
+
 ```typescript
 args: {
+  // Campaign title/description — distinct from prize.new's own title/description
+  // below, which describe the prize itself, not the campaign.
   title: v.string(),
   description: v.string(),
-  sponsorId: v.id("sponsors"),
-  prizeId: v.id("prizes"),
+  // A prize belongs to exactly one sponsor (prizes.sponsorId) — reusing a prize
+  // means reusing its sponsor too. There is no combination that creates a new
+  // sponsor for a reused prize, or reuses a sponsor for a new prize.
+  prize: v.union(
+    v.object({
+      kind: v.literal("existing"),
+      prizeId: v.id("prizes"),
+    }),
+    v.object({
+      kind: v.literal("new"),
+      sponsor: v.object({
+        name: v.string(),
+        websiteUrl: v.string(),
+        ctaLabel: v.string(),
+        ctaUrl: v.string(),
+        description: v.string(),
+        contactName: v.string(),
+        contactEmail: v.string(),
+      }),
+      title: v.string(), // the prize's title, not the campaign's
+      description: v.string(), // the prize's description, not the campaign's
+      estimatedRetailValueCents: v.number(),
+      currency: v.optional(v.string()), // defaults to "USD"
+      quantity: v.optional(v.number()), // defaults to 1
+      fulfillmentType: v.union(
+        v.literal("physical"),
+        v.literal("digital"),
+        v.literal("experience"),
+      ),
+      fulfillmentNotes: v.string(),
+    }),
+  ),
   dailySpins: v.number(),
   resetTimezone: v.string(),
   resetHour: v.number(),
@@ -180,54 +177,165 @@ args: {
     v.literal("end_campaign"),
   ),
   rulesContent: v.string(),
-  endAt: v.optional(v.number()),
 }
 returns: v.id("campaigns")
 ```
 
-- `requireAdmin(ctx)`.
-- `title` trimmed/non-empty/capped, same as sponsor/prize.
-- Verify `sponsorId` and `prizeId` both resolve to real rows (same "never trust a
-  bare reference" discipline as `createPrize`) — throws `SPONSOR_NOT_FOUND` /
-  `PRIZE_NOT_FOUND`.
-- `dailySpins` positive integer; `resetHour` integer in `[0, 23]`; `resetTimezone`
-  non-empty string (this build does not validate it's a real IANA timezone name —
-  same trust level `seed.ts` already gives this field).
-- `targetVolume` positive integer — throws `TARGET_VOLUME_INVALID`. Written to BOTH
-  `projectedVolume` and `oddsDenominator` (Decision 3). This is the only numeric
-  input for that pair; there is no `oddsDenominator` argument at all.
-- `shardCount`: defaults to `16` if omitted; if provided, must be a positive integer
-  — throws `SHARD_COUNT_INVALID`.
-- `reelColumns`: **not an argument** — computed via `resolveTier(prizeValueCents).columns`
-  (`convex/lib/tiers.ts`) from the prize just looked up, so it can never drift from
-  the prize's actual value.
-- `slug`: same derive-and-deduplicate scheme as `createSponsor`, checked against
-  `campaigns.by_slug` (confirmed to exist on the `campaigns` table in
-  `convex/schema.ts`).
-- Eligibility fields written directly from constants: `eligibleCountries: ["US"]`,
-  `eligibleRegions: [...ELIGIBLE_JURISDICTIONS]`, `minimumAge: MINIMUM_AGE`
-  (`convex/lib/jurisdictions.ts`) — not derived from any argument.
-- `requireEmailVerification: true` (fixed, matching `seed.ts`; not a form field —
-  no product reasoning surfaced during brainstorming for varying this per campaign).
-- `status: "draft"`, `commitmentHash: "PENDING_ACTIVATION"`, `startAt: Date.now()`
-  (placeholder — real semantic meaning is assigned at activation, but the field is
-  non-optional on the schema so it needs a value at insert time; `activateCampaign`
-  below overwrites it), `activeRulesVersion: 1`, `endAt: args.endAt` (undefined if
-  not provided).
-- Insert the `campaignRules` row in the same mutation: `version: 1`,
-  `title: "Official Rules"`, `content: args.rulesContent`, `noPurchaseStatement`
-  fixed to the exact `PRODUCT.md`-prescribed string ("No purchase necessary. A
-  purchase will not increase your chances of winning. Eligibility restrictions
-  apply. See Official Rules."), `oddsStatement` computed exactly like `seed.ts`
-  does: `` `Stated odds of ${formatOdds(targetVolume)} are based on the expected
-  number of eligible entries; actual odds depend on the total entries received.` ``,
-  `effectiveAt: Date.now()`.
-- `writeAudit`: `actorType: "admin"`, `action: "campaign.created"`,
-  `entityType: "campaigns"`, `entityId: <new id>`,
-  `after: { slug, title, sponsorId, prizeId, targetVolume }`.
-- Returns the new campaign's `_id`.
+Note what's *not* here versus the earlier draft: no `sponsorId`/`prizeId` arguments
+(they come from the `prize` union instead), and no `endAt` argument at all (see
+Scope — this build doesn't expose it).
 
-### `campaignAdmin.activate` (admin-facing activation)
+Handler, in order:
+
+1. `requireAdmin(ctx)`.
+2. `title`/`description` trimmed/non-empty/capped at 120 chars (same
+   `MAX_NAME_LENGTH`-style convention `claims.ts` already established for
+   `legalName`) — throws `CAMPAIGN_TITLE_REQUIRED` / `CAMPAIGN_TITLE_TOO_LONG`.
+3. **Resolve the prize and sponsor**, branching on `args.prize.kind`:
+   - `"existing"`: look up `args.prize.prizeId` — throw `PRIZE_NOT_FOUND` if it
+     doesn't resolve. Look up its `sponsorId` from the prize row itself (not a
+     separate argument) — throw `SPONSOR_NOT_FOUND` if that sponsor is somehow
+     missing (shouldn't happen given the foreign key, but never trust a reference
+     without confirming what it points to, same discipline as everywhere else in
+     this codebase).
+   - `"new"`: validate `args.prize.sponsor.name` (trimmed/non-empty/capped, same
+     convention) and `args.prize.title` (same), validate
+     `estimatedRetailValueCents` is a positive integer — throws
+     `PRIZE_VALUE_INVALID` (mirrors `sealTarget`'s existing
+     `Number.isInteger(...) && ... > 0` style range checks) — validate `quantity`
+     is a positive integer if provided (defaults to `1`). Then, in this same
+     transaction: insert the sponsor (`status: "active"`, slug derived from name —
+     see step 6 for the slugging scheme, no `logoStorageId`/`brandColor`, no image
+     upload per Scope), then insert the prize referencing that new sponsor's id
+     (`imageStorageIds: []` per Scope).
+4. `dailySpins` positive integer; `resetHour` integer in `[0, 23]`.
+5. **`resetTimezone`: validated as a real IANA timezone name**, not just a
+   non-empty string — revised after user spec review. `convex/lib/resetDate.ts`'s
+   `resetDateKey` already calls `new Intl.DateTimeFormat("en-CA", { timeZone:
+   timezone, ... })` on every single spin; an invalid timezone string accepted at
+   creation time would throw a `RangeError` there instead, breaking every spin on
+   the campaign rather than failing once, up front, when it's cheap to fix.
+   Validate with the same primitive: `new Intl.DateTimeFormat("en-US", { timeZone:
+   args.resetTimezone })` inside a `try`/`catch`, throwing `INVALID_TIMEZONE` if it
+   throws. (`Intl` is already used elsewhere in this exact runtime —
+   `app/lib/tiers.ts`'s `formatMoney` uses `Intl.NumberFormat` — so this needs no
+   new dependency.)
+6. **`slug`** (for the campaign, and separately for a newly created sponsor in step
+   3): derived from the relevant name (lowercase, non-alphanumeric runs collapsed
+   to a single `-`, trimmed of leading/trailing `-`), then de-duplicated — if a row
+   with that slug already exists, append `-2`, `-3`, ... until unique
+   (`campaigns.by_slug` and `sponsors.by_slug`, both confirmed to exist in
+   `convex/schema.ts`). Slug is never a user-facing form field on either entity —
+   it's a URL-safe identifier, not a marketing surface.
+7. `targetVolume` positive integer — throws `TARGET_VOLUME_INVALID`. Written to
+   BOTH `projectedVolume` and `oddsDenominator` (Decision 3) — this is the only
+   numeric input for that pair; there is no `oddsDenominator` argument.
+8. `shardCount`: defaults to `16` if omitted; if provided, must be a positive
+   integer — throws `SHARD_COUNT_INVALID`.
+9. `reelColumns`: **not an argument** — computed via
+   `resolveTier(prizeValueCents).columns` (`convex/lib/tiers.ts`) from whichever
+   prize was resolved in step 3 (existing or newly created), so it can never drift
+   from the prize's actual value.
+10. Eligibility fields written directly from constants: `eligibleCountries: ["US"]`,
+    `eligibleRegions: [...ELIGIBLE_JURISDICTIONS]`, `minimumAge: MINIMUM_AGE`
+    (`convex/lib/jurisdictions.ts`) — not derived from any argument.
+11. `requireEmailVerification: true` (fixed, matching `seed.ts`; not a form field —
+    no product reasoning surfaced for varying this per campaign).
+12. Insert the campaign: `status: "draft"`, `commitmentHash: "PENDING_ACTIVATION"`,
+    `startAt: Date.now()` (placeholder — real semantic meaning is assigned at
+    activation, but the field is non-optional on the schema so it needs a value at
+    insert time; `sealTarget` overwrites it — see below), `activeRulesVersion: 1`.
+    No `endAt` field written at all.
+13. Insert the `campaignRules` row in the same transaction: `version: 1`,
+    `title: "Official Rules"`, `content: args.rulesContent`, `noPurchaseStatement`
+    fixed to the exact `PRODUCT.md`-prescribed string ("No purchase necessary. A
+    purchase will not increase your chances of winning. Eligibility restrictions
+    apply. See Official Rules."), `oddsStatement` computed exactly like `seed.ts`
+    does: `` `Stated odds of ${formatOdds(targetVolume)} are based on the expected
+    number of eligible entries; actual odds depend on the total entries received.` ``,
+    `effectiveAt: Date.now()`.
+14. `writeAudit`: `actorType: "admin"`, `action: "campaign.created"`,
+    `entityType: "campaigns"`, `entityId: <new campaign id>`,
+    `after: { slug, title, sponsorId, prizeId, targetVolume }` (if a new sponsor
+    and/or prize were created in step 3, their own creation is *not* separately
+    audited — this whole operation is one admin action, "created a campaign," and
+    splitting it into three audit entries for one atomic transaction would be
+    noise, unlike `admin.ts`'s claim-review actions, which really are separate
+    events happening at separate times).
+15. Returns the new campaign's `_id`.
+
+### `listPrizes` (query, for the "pick an existing prize" picker)
+
+```typescript
+args: {}
+returns: array of { _id, title, estimatedRetailValue, sponsorName }
+```
+
+- `requireAdmin(ctx)`.
+- New — confirmed no `convex/prizes.ts` file or equivalent query exists today;
+  prize reads currently only happen inline inside `campaigns.ts`/`admin.ts`.
+  Returns every prize (small table in practice, same full-scan acceptance
+  `listPendingClaims` already documents), joined with its sponsor's name for
+  display.
+
+### `winnerEngine.sealTarget` (modified) and `campaignAdmin.activate` (new, admin-facing)
+
+**Two real gaps found while writing and then revising this spec, both fixed in
+`sealTarget` itself:**
+
+1. **`sealTarget` never touches campaign status.** That only worked in the existing
+   CLI flow because `seedCampaign` already inserts the campaign with
+   `status: "live"` *before* `activateCampaign` ever runs. This build's campaigns
+   start at `status: "draft"` instead, so without a change, a campaign would seal
+   successfully and then sit in `draft` forever — activated in every sense except
+   the one that makes it playable.
+2. **"Only one campaign live at a time" needs to be the transaction's own
+   invariant, not a pre-check an action runs before calling it** — revised after
+   user spec review. The earlier draft of this spec put this check in a
+   `ctx.runQuery` the admin-facing action ran *before* calling the sealing action,
+   and explicitly accepted that two concurrent activations could still both
+   succeed, reasoning that activation is rare enough not to matter. That reasoning
+   doesn't hold for something controlling a live prize promotion: two browser
+   tabs, a retry, or two admins acting around the same time could genuinely both
+   attempt this. The fix is to make the database transaction itself the guarantee,
+   not a best-effort check outside it.
+
+**Resolution — `sealTarget` (`convex/winnerEngine.ts`) gains, immediately before its
+existing writes:**
+
+```typescript
+const others = await ctx.db.query("campaigns").withIndex("by_status", (q) => q.eq("status", "live")).collect();
+const pending = await ctx.db.query("campaigns").withIndex("by_status", (q) => q.eq("status", "winner_pending")).collect();
+if ([...others, ...pending].some((c) => c._id !== args.campaignId)) {
+  throw new Error("ANOTHER_CAMPAIGN_ACTIVE");
+}
+```
+
+(Excluding `args.campaignId` itself matters: in the existing CLI flow, the campaign
+being sealed is *already* `status: "live"` at the moment `sealTarget` runs — set by
+`seedCampaign` beforehand — so an unqualified check would make the CLI flow fail
+its own exclusivity check against itself.)
+
+And its existing `ctx.db.patch(args.campaignId, { commitmentHash:
+args.commitmentHash })` becomes `{ commitmentHash: args.commitmentHash, status:
+"live" }`. `sealTarget` is already the single source of truth for "a campaign is
+sealed" — this is where "sealed, therefore exclusively playable" belongs, inside
+the one mutation whose transaction actually enforces it, not split across a
+pre-check and a separate write. Backward-compatible with the existing CLI flow:
+`seedCampaign` already sets `status: "live"` first, so re-patching it to `"live"`
+is a no-op there, and no existing test asserts anything about status immediately
+after calling `sealTarget` in isolation (confirmed by reading
+`convex/winnerEngine.test.ts`).
+
+**The plan must include a test proving the exclusivity guarantee is real**: two
+campaigns both in `draft`, activate the first successfully, then attempt to
+activate the second and confirm it throws `ANOTHER_CAMPAIGN_ACTIVE` with nothing
+about the second campaign's state changed — not just a test that checks the happy
+path reaches `status: "live"`. This mirrors exactly the lesson from this session's
+`resume_campaign` bug: a test that only checks the state-flip, not the invariant
+under contention, would have shipped the same class of bug again.
+
+### `campaignAdmin.activate`
 
 ```typescript
 args: { campaignId: v.id("campaigns") }
@@ -239,53 +347,36 @@ an `internalAction` called `activateCampaign`, and this new, distinctly-named,
 admin-facing entry point in `convex/campaignAdmin.ts` calls straight into it rather
 than duplicating its randomness-drawing logic.
 
-**A real gap this build must close, found while writing this spec:** `sealTarget`
-(`convex/winnerEngine.ts`) currently only ever patches `commitmentHash` — it never
-touches `status`. That's correct for the *existing* CLI flow only because
-`seedCampaign` already inserts the campaign with `status: "live"` *before*
-`activateCampaign` ever runs. This build's campaigns start at `status: "draft"`
-instead, so without a change, a campaign would seal successfully and then sit in
-`draft` forever — activated in every sense except the one that makes it playable.
-
-**Resolution:** add `status: "live"` to `sealTarget`'s own existing
-`ctx.db.patch(args.campaignId, { commitmentHash: args.commitmentHash })` call,
-making it `{ commitmentHash: args.commitmentHash, status: "live" }`. This is the
-single source of truth for "a campaign is sealed" already, so this is where "sealed
-therefore playable" belongs — not a second, separate patch call from the new
-wrapper. It's backward-compatible with the existing CLI flow: `seedCampaign` already
-sets `status: "live"` first, so re-setting it to `"live"` there is a no-op. The plan
-must include a test asserting a `draft` campaign really does reach `status: "live"`
-and become spinnable after `campaignAdmin.activate` runs — this exact
-draft-vs-already-live mismatch is precisely what a pre-flight cross-task scan
-(per `subagent-driven-development`) exists to catch before dispatching, not after.
-
-Behavior:
-
 - Is an `action` (not a `mutation`), because it needs to call
   `internal.winnerEngine.activateCampaign` — itself an `internalAction` — and
-  actions call other actions/mutations via `ctx.runQuery`/`ctx.runMutation`/`ctx.runAction`,
-  never the reverse.
+  actions call other actions/mutations via
+  `ctx.runQuery`/`ctx.runMutation`/`ctx.runAction`, never the reverse.
 - Step 1, via `ctx.runQuery` on a new small internal query: `requireAdmin(ctx)`;
   throw `CAMPAIGN_NOT_FOUND` if the campaign doesn't exist; throw
-  `CAMPAIGN_NOT_DRAFT` if `status !== "draft"` (covers both "already activated" and
-  "not a real campaign to activate" — mirrors `sealTarget`'s own
-  `TARGET_ALREADY_SEALED` guard one level up); throw `ANOTHER_CAMPAIGN_ACTIVE` if
-  any *other* campaign already has `status: "live"` or `"winner_pending"` (the same
-  two statuses `getActiveCampaign` already treats as "the current campaign") — this
-  check is a pre-check, not the authoritative guard, so a race between two
-  concurrent activations is still only prevented by whichever `sealTarget` call
-  commits first; that's acceptable here since activation is a rare, single-admin,
-  deliberate action, not a high-concurrency path like `spinExecute`.
+  `CAMPAIGN_NOT_DRAFT` if `status !== "draft"` (covers both "already activated"
+  and "not a real campaign to activate" — mirrors `sealTarget`'s own
+  `TARGET_ALREADY_SEALED` guard one level up). This step is a fast-fail UX nicety
+  only, checking the obvious cases before spending the crypto/randomness work in
+  step 2 — it is **not** where the exclusivity guarantee lives; that's
+  `sealTarget`'s own authoritative, transactional check (see above). A request
+  that passes this pre-check can still legitimately fail at the `sealTarget` step
+  if another activation won the race in between — that's the guarantee working as
+  intended, not a bug to route around here.
 - Step 2: `ctx.runAction(internal.winnerEngine.activateCampaign, { campaignId })` —
-  reuses the existing internal action exactly as-is; no duplicated randomness logic.
-- Step 3: `writeAudit` — `action: "campaign.activated"`, `entityType: "campaigns"`,
+  reuses the existing internal action exactly as-is; no duplicated randomness
+  logic. This is what actually calls the now-modified `sealTarget`.
+- Step 3: `writeAudit` — `actorType: "admin"`, `action: "campaign.activated"`,
+  `entityType: "campaigns"`, `entityId: campaignId`,
   `before: { status: "draft" }`, `after: { status: "live", commitmentHash: "sealed" }`
   (never the raw hash or target — same secrecy discipline every other audit entry
-  touching `campaignSecrets`/`commitmentHash` already follows in this codebase).
-  Note this is a *separate* audit entry from `sealTarget`'s own existing
-  `campaign.seal_target` entry (`entityType: "campaigns"`, logs the hash) — both
-  fire, recording the mechanical seal and the admin's deliberate act as the two
-  distinct things they are.
+  touching `campaignSecrets`/`commitmentHash` already follows). This is a
+  *separate* audit entry from `sealTarget`'s own existing `campaign.seal_target`
+  entry (`entityType: "campaigns"`, logs the hash) — both fire, recording the
+  mechanical seal and the admin's deliberate act as the two distinct things they
+  are. If step 2 throws (including `ANOTHER_CAMPAIGN_ACTIVE`), this step never
+  runs — no audit entry is written for a failed activation attempt, matching how
+  every other mutation in this codebase only audits a state change that actually
+  happened.
 
 ### `listCampaigns` (query, for the admin UI)
 
@@ -304,12 +395,12 @@ returns: array of { campaign fields (picked, not spread — same discipline
 
 ### `app/admin/campaigns/new/page.tsx` (new)
 
-One form: `useMutation(createSponsor)`, either `useMutation(createPrize)` or a
-prize picker `<select>` fed by `useQuery(listPrizes)` (both new — see "Resolved
-during spec self-review"), then `useMutation(createDraftCampaign)`. Called in
-sequence on submit (sponsor → prize → campaign, threading each returned id into the
-next call). A failure partway through can leave an orphaned sponsor/prize row —
-accepted for v1, see "Resolved during spec self-review."
+One form, one `useMutation(createDraftCampaign)` call on submit — no client-side
+sequencing of multiple mutations, since `createDraftCampaign` now does everything
+in one transaction (see Backend). A toggle between "pick an existing prize"
+(`<select>` fed by `useQuery(listPrizes)`) and "create a new prize" switches which
+set of fields the form collects and which shape of the `prize` union it sends —
+the sponsor fields only appear on the "new prize" path.
 
 Same "deliberately unstyled, inline `style={{}}`" convention as the rest of
 `app/admin/*` (per the original claim-verification plan's own approved decision —
@@ -321,10 +412,14 @@ page on success.
 Shows every field the campaign was created with, the computed tier/columns/default-odds
 context, a `REGISTRATION_THRESHOLD_CENTS`-gated warning banner (Decision 7) reading
 something like *"This prize is $5,000 or more — NY/FL registration and bonding
-apply, and this system does not yet enforce the required hard end date (see
-ROADMAP.md). Confirm this has been handled before activating."* An **Activate**
-button behind `window.confirm()` (matching `onApprove`/`onPurge`'s existing pattern
-in `app/admin/claims/[claimId]/page.tsx`), disabled/hidden once `status !== "draft"`.
+apply, and this system does not yet enforce a hard end date for that requirement
+(see ROADMAP.md). Confirm this has been handled outside the app before
+activating."* (Prose only — no `endAt` field is shown or settable here, since this
+build doesn't expose one; see Scope.) An **Activate** button behind
+`window.confirm()` (matching `onApprove`/`onPurge`'s existing pattern in
+`app/admin/claims/[claimId]/page.tsx`), disabled/hidden once `status !== "draft"`.
+If activation throws `ANOTHER_CAMPAIGN_ACTIVE`, show that plainly — it's not an
+error path to hide, it's the exclusivity guarantee doing its job.
 
 ### `app/admin/page.tsx` (modified)
 
@@ -338,29 +433,68 @@ by typing it directly.
   established `MAX_NAME_LENGTH` convention) where it's a name/title.
 - Every numeric field: positive-integer-checked before insert, matching
   `sealTarget`'s existing `Number.isInteger(...) && ... > 0` style.
-- Every foreign key (`sponsorId`, `prizeId`) verified to resolve to a real row
-  before being written into a new row that references it.
-- `activateCampaign`: `draft`-only, admin-only, and refuses if another campaign is
-  already `live`/`winner_pending` — enforced via a query the surrounding action
-  checks before calling the internal sealing action.
-- Tier 5-6 gets a warning, never a block, per Decision 7.
+- `resetTimezone` validated as a real IANA timezone name via
+  `Intl.DateTimeFormat`, not just checked for non-emptiness.
+- Every foreign key (an existing `prizeId`, or a prize's `sponsorId` once
+  resolved) verified to resolve to a real row before being written into a new row
+  that references it.
+- Sponsor/prize/campaign/rules creation is one mutation, one transaction — no
+  partial-creation state is reachable at all, let alone left unaddressed.
+- `sealTarget`: the sole, transactional enforcement point for "only one campaign
+  is ever `live`/`winner_pending` at a time" — not a pre-check an action runs
+  before calling it.
+- `campaignAdmin.activate`: `draft`-only, admin-only; its own pre-check is a
+  fast-fail UX nicety, not the exclusivity guarantee (that's `sealTarget`'s job).
+- Tier 5-6 gets a warning, never a block, per Decision 7 — and no `endAt` field to
+  half-implement alongside that warning (see Scope).
 
 ## Resolved during spec self-review
 
-- **The `status: "draft" → "live"` transition** happens inside `sealTarget`
-  (`convex/winnerEngine.ts`), added to its existing `commitmentHash` patch — see the
-  `campaignAdmin.activate` section above. Not a separate patch from the new wrapper.
-- **`campaigns.by_slug`** is confirmed to exist (`convex/schema.ts`, on the
-  `campaigns` table specifically — verified by reading the schema, not assumed) and
-  is the right index for the slug-uniqueness check in `createDraftCampaign`.
-- **`listPrizes`** is a new query in `convex/campaignAdmin.ts` (admin-gated, returns
-  existing prizes for the "pick an existing prize" picker) — confirmed no
+- **`campaigns.by_slug` and `sponsors.by_slug`** are both confirmed to exist
+  (`convex/schema.ts`) and are the right indexes for the respective
+  slug-uniqueness checks in `createDraftCampaign`.
+- **`listPrizes`** is a new query in `convex/campaignAdmin.ts` (admin-gated,
+  returns existing prizes for the "pick an existing prize" picker) — confirmed no
   `convex/prizes.ts` file or equivalent query exists today; prize reads currently
   only happen inline inside `campaigns.ts`/`admin.ts`.
-- **Multi-step form failure handling**: accept that a partial failure (e.g. sponsor
-  and prize created, campaign creation fails) can leave an orphaned sponsor/prize
-  row for v1. This is a rare, admin-only, low-volume tool — building
-  resumability/cleanup for a partial-form-submission edge case is more machinery
-  than the actual risk justifies. If this proves annoying in practice, the fix is
-  cheap later (a "pick existing sponsor" escape hatch mirroring the existing "pick
-  existing prize" one) and doesn't need to be built preemptively.
+
+## Revised after user spec review
+
+The user reviewed the written spec (not just the in-chat design) and found three
+real issues plus one smaller one. All four are reflected in the sections above;
+this is the summary of what changed and why, kept here so the reasoning survives
+even if someone only skims the final shape:
+
+1. **Single-active-campaign enforcement had a real race.** The original draft put
+   the "no other campaign is live/winner_pending" check in a pre-check the
+   activation action ran before calling the sealing action, and explicitly
+   accepted that two concurrent activations could both succeed — reasoning that
+   activation is rare enough not to matter. Rejected: rarity doesn't make a race
+   acceptable on something controlling a live prize promotion. Fixed by moving the
+   check *inside* `sealTarget` itself, so the database transaction is the actual
+   guarantee, not a best-effort check running outside it.
+2. **Sponsor/prize/campaign creation wasn't atomic.** The original draft had three
+   separate exported mutations (`createSponsor`, `createPrize`,
+   `createDraftCampaign`) called in sequence from the client, and explicitly
+   accepted that a failure partway through could leave an orphaned sponsor or
+   prize row. There was no real benefit to that sequencing happening client-side —
+   a single Convex mutation is already one transaction regardless of how many
+   inserts it performs internally. Fixed by folding sponsor/prize creation into
+   one `createDraftCampaign` mutation; `createSponsor`/`createPrize` are no longer
+   separate exported functions at all.
+3. **`endAt` was recorded without being enforced, which is worse than not having
+   it.** The original draft let the admin set `endAt` "for documentation
+   purposes" on tier 5-6 campaigns while plainly stating nothing enforces it. A
+   field that looks operational but silently does nothing is a worse shape than no
+   field, especially for a number with potential Official Rules significance.
+   Fixed by removing `endAt` from this build entirely (not a form field, not a
+   `createDraftCampaign` argument) — the tier 5-6 warning names the gap in prose
+   instead. This doesn't reopen the earlier decision (from a prior conversation
+   this session) not to build `endAt` *enforcement* yet; it just stops this build
+   from pretending to track something it doesn't act on.
+4. **`resetTimezone` accepted any non-empty string.** Fixed with real IANA
+   timezone validation (`Intl.DateTimeFormat`, catching the `RangeError` an
+   invalid zone throws) — worth doing now rather than deliberately carrying
+   forward a weakness `seed.ts` has, especially since an invalid timezone
+   currently wouldn't fail until the first spin tries to compute a reset date,
+   not at creation time when it's actually cheap to catch.
