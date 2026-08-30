@@ -247,12 +247,15 @@ export default async function RulesPage() {
         {/*
           This passage used to state the mechanism — "the sealed winning entry
           number is left untouched, and the next entry to reach it wins" — which
-          the engine cannot deliver: by the time a claim exists the entry counter
-          has already passed the sealed target, so no later entry can reach it.
-          Publishing a mechanism the code does not implement is worse than
-          publishing the policy alone, so the policy stands and the mechanism is
-          withheld pending the resume implementation and legal review. Wording is
-          not final; it is listed under "Still required before launch" below.
+          the engine could not deliver at the time: the winning shard's spin count
+          only ever grows, so once a spin has made it hit the sealed target, no
+          later spin could ever make it hit that exact count again. That gap is
+          now closed (convex/admin.ts's rejectClaim, resume_campaign policy,
+          decrements the winning shard's count by exactly one on disqualification,
+          which is safe only because the campaign can't be spun again until it
+          resumes). The mechanism is real now, but the wording here is still
+          withheld pending legal review — it's listed under "Still required
+          before launch" below.
         */}
         <p>
           If a potential winner fails verification, does not meet the eligibility
@@ -304,9 +307,10 @@ export default async function RulesPage() {
           Review by qualified counsel for every listed jurisdiction; the operating
           entity&rsquo;s legal name and address; a winners-list request address; the
           administrator&rsquo;s identity; any state registration or bonding that
-          applies to a future higher-value campaign; and the exact wording and
-          mechanism for resuming a campaign after a disqualification, which is
-          stated as policy above but not yet implemented or approved.
+          applies to a future higher-value campaign; and the exact public wording
+          for how a disqualification is resolved &mdash; the resume-to-live
+          mechanism stated as policy above is now implemented, but none of it has
+          been reviewed or approved by counsel.
         </p>
       </section>
     </DocumentShell>
