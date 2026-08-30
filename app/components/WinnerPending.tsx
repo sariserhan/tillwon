@@ -3,6 +3,47 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { formatMoney } from "@/convex/lib/tiers.ts";
+import { FlapDrum } from "./FlapDrum";
+import type { SymbolKey } from "@/convex/lib/symbols.ts";
+
+function wonAtLabel(wonAt: number): string {
+  return new Date(wonAt).toLocaleString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * The reel exactly as it stood at the moment of the win, at rest — no flip
+ * animation (falling is always false, so FlapDrum never renders a falling
+ * leaf regardless of the `reduced` value passed). Public proof that a
+ * specific, visible outcome happened at a specific, visible time, not a
+ * description of one.
+ */
+function FrozenReel({ symbols }: { symbols: SymbolKey[] }) {
+  return (
+    <div
+      className="brushed-dark inline-flex items-center gap-1 rounded-[4px] p-2 shadow-[0_3px_10px_rgb(0_0_0/0.5)]"
+      style={{ gap: symbols.length <= 4 ? 6 : symbols.length <= 6 ? 4 : 3 }}
+    >
+      {symbols.map((symbol, i) => (
+        <div key={i} className="w-12 sm:w-14">
+          <FlapDrum
+            incoming={symbol}
+            outgoing={symbol}
+            falling={false}
+            flipId={0}
+            reduced={true}
+            label={`Reel ${i + 1} of ${symbols.length}, resting on the winning result`}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /**
  * The two faces of a winner-pending campaign.
@@ -173,7 +214,12 @@ export function PotentialWinnerPanel({
  * because "the draw is paused indefinitely" is the reading people will otherwise
  * reach for.
  */
-export function CampaignPausedNotice() {
+export function CampaignPausedNotice({
+  winningReveal,
+}: {
+  /** Null only in the instant between the pause and this data loading in. */
+  winningReveal: { symbols: SymbolKey[]; wonAt: number } | null;
+}) {
   return (
     <section className="bg-studio-900 px-4 py-10 sm:px-6 sm:py-14">
       <div className="mx-auto max-w-7xl">
@@ -191,10 +237,23 @@ export function CampaignPausedNotice() {
           A winning entry was drawn and is being verified. Spins are paused while
           that happens, and no prize has been awarded yet.
         </p>
-        {/* Deliberately does not name the mechanism. The engine cannot currently
-            resume on the original sealed target — the shard counter has already
-            passed it — so promising that here would be a claim the product
-            cannot keep. See the matching passage in the Official Rules. */}
+
+        {winningReveal && (
+          <div className="mt-5">
+            <FrozenReel symbols={winningReveal.symbols} />
+            <p className="mt-2 text-sm text-caption">
+              Result reached {wonAtLabel(winningReveal.wonAt)}. The reel above is
+              held exactly where it landed, as proof.
+            </p>
+          </div>
+        )}
+        {/* Deliberately still doesn't name the mechanism, though the engine can
+            now actually deliver it (convex/admin.ts's rejectClaim implements
+            all three disqualificationPolicy options) — the wording here
+            depends on which policy a given campaign is configured with, and
+            publishing that is a per-campaign Official Rules decision, not
+            something this shared notice can commit to. See the matching
+            passage in the Official Rules. */}
         <p className="mt-3 max-w-[56ch] text-base leading-relaxed text-caption">
           If verification is not completed, the prize is not awarded to that
           entrant and the draw resumes. How it resumes will be set out in the

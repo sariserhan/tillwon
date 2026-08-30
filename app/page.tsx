@@ -19,6 +19,7 @@ import {
   TallyLamp,
 } from "./components/StudioFurniture";
 import { formatMoney } from "@/convex/lib/tiers.ts";
+import type { SymbolKey } from "@/convex/lib/symbols.ts";
 
 /**
  * The prize's type without its value, e.g. "gift card" from "$100 gift card" —
@@ -141,7 +142,13 @@ export default function Home() {
       <main>
         <SiteHeader />
         <div id="content">
-          <CampaignPausedNotice />
+          <CampaignPausedNotice
+            winningReveal={
+              active.winningReveal === null
+                ? null
+                : { ...active.winningReveal, symbols: active.winningReveal.symbols as SymbolKey[] }
+            }
+          />
         </div>
         <HowItWorks oddsDenominator={oddsDenominator} />
         <PrizeAndSponsor />

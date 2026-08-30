@@ -64,7 +64,9 @@ export default async function PreviewPage({
             prizeValueCents={10_000}
           />
         ) : (
-          <CampaignPausedNotice />
+          <CampaignPausedNotice
+            winningReveal={{ symbols: ["SEVEN", "SEVEN", "SEVEN"], wonAt: Date.now() }}
+          />
         )}
 
         <div className="px-4 py-8 sm:px-6">

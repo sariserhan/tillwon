@@ -73,6 +73,66 @@ describe("campaigns", () => {
     expect(body).not.toContain("deadbeef");
   });
 
+  it("exposes the winning spin's visual symbols and timestamp as public proof, once winningSpinId is set", async () => {
+    await t.mutation(internal.seed.seedCampaign, {});
+
+    const spinId = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        clerkId: "clerk_winner",
+        email: "winner@example.com",
+        emailVerified: true,
+        ageVerified: true,
+        accountStatus: "active",
+        role: "user",
+        fraudRiskScore: 0,
+        marketingConsent: false,
+        dailyReminderConsent: false,
+        totalSpins: 1,
+        totalPotentialWins: 1,
+      });
+      const campaign = (await ctx.db.query("campaigns").first())!;
+      const spinId = await ctx.db.insert("spins", {
+        userId,
+        campaignId: campaign._id,
+        idempotencyKey: "win-1",
+        shard: 0,
+        shardSequence: 1,
+        symbols: ["SEVEN", "SEVEN", "SEVEN"],
+        isPotentialWinner: true,
+        isValid: true,
+        riskScore: 0,
+        riskFlags: [],
+        ipHash: "",
+        deviceHash: "test",
+        engineVersion: "test",
+        rulesVersion: 1,
+      });
+      await ctx.db.patch(campaign._id, {
+        status: "winner_pending",
+        winningSpinId: spinId,
+        potentialWinnerUserId: userId,
+      });
+      return spinId;
+    });
+
+    const active = await t.query(api.campaigns.getActiveCampaign, {});
+    expect(active!.winningReveal).toMatchObject({ symbols: ["SEVEN", "SEVEN", "SEVEN"] });
+    expect(active!.winningReveal!.wonAt).toBeTypeOf("number");
+
+    // Still never the sealed target itself, or the spin/user ids — only the
+    // visual outcome (which is always the same for a jackpot by construction)
+    // and when it happened.
+    const body = JSON.stringify(active);
+    expect(body).not.toContain(spinId);
+    expect(body).not.toContain("winningSpinId");
+  });
+
+  it("returns winningReveal: null while the campaign is live (no winner yet)", async () => {
+    await t.mutation(internal.seed.seedCampaign, {});
+    const active = await t.query(api.campaigns.getActiveCampaign, {});
+    expect(active!.winningReveal).toBeNull();
+  });
+
   it("seeds an eligibility set of 46 states plus DC", async () => {
     await t.mutation(internal.seed.seedCampaign, {});
     const active = await t.query(api.campaigns.getActiveCampaign, {});

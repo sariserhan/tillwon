@@ -37,6 +37,15 @@ export const getActiveCampaign = query({
     ]);
     if (sponsor === null || prize === null || rules === null) return null;
 
+    // The visual reel outcome, not the sealed target — every jackpot spin
+    // shows the same symbols by construction, so this reveals nothing about
+    // the secret shard/count/nonce. It's what lets every visitor (not just
+    // the winner) see the actual paused reel as proof, with when it happened.
+    const winningSpin =
+      pending.status === "winner_pending" && pending.winningSpinId !== undefined
+        ? await ctx.db.get(pending.winningSpinId)
+        : null;
+
     return {
       // Picked field by field, never spread. This query deliberately also serves
       // winner_pending campaigns — the one state where potentialWinnerUserId and
@@ -73,6 +82,8 @@ export const getActiveCampaign = query({
       rules,
       tier: resolveTier(prize.estimatedRetailValue),
       oddsDenominator: pending.oddsDenominator,
+      winningReveal:
+        winningSpin === null ? null : { symbols: winningSpin.symbols, wonAt: winningSpin._creationTime },
     };
   },
 });
