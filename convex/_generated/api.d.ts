@@ -25,6 +25,7 @@ import type * as seed from "../seed.js";
 import type * as spins from "../spins.js";
 import type * as users from "../users.js";
 import type * as winnerEngine from "../winnerEngine.js";
+import type * as winners from "../winners.js";
 
 import type {
   ApiFromModules,
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   spins: typeof spins;
   users: typeof users;
   winnerEngine: typeof winnerEngine;
+  winners: typeof winners;
 }>;
 
 /**
